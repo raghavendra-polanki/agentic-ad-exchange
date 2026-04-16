@@ -1,12 +1,26 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.api import agents, opportunities, proposals, deals, content, stream
+from src.api import agents, content, deals, opportunities, proposals, stream
+from src.conflict import init_conflict_engine
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: load conflict graph seed data
+    init_conflict_engine()
+    print("AAX Exchange started — conflict engine loaded")
+    yield
+    print("AAX Exchange shutting down")
+
 
 app = FastAPI(
     title="AAX Exchange",
     description="Agentic Ad Exchange — Protocol API",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(

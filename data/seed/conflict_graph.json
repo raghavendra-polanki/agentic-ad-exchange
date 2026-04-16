@@ -1,0 +1,43 @@
+{
+  "schools": [
+    { "school_id": "mit", "name": "MIT", "conference": "NEWMAC" }
+  ],
+  "athletes": [
+    { "athlete_id": "jane_doe", "name": "Jane Doe", "school_id": "mit", "sport": "basketball" }
+  ],
+  "brands": [
+    { "brand_id": "nike", "name": "Nike", "category": "apparel" },
+    { "brand_id": "adidas", "name": "Adidas", "category": "apparel" },
+    { "brand_id": "gatorade", "name": "Gatorade", "category": "sports_drink" },
+    { "brand_id": "bodyarmor", "name": "BodyArmor", "category": "sports_drink" },
+    { "brand_id": "campus_pizza", "name": "Campus Pizza", "category": "food" }
+  ],
+  "conferences": [
+    { "conference_id": "newmac", "name": "NEWMAC" }
+  ],
+  "sponsorships": [
+    {
+      "school_id": "mit",
+      "brand_id": "nike",
+      "category": "apparel",
+      "start_date": "2024-01-01",
+      "end_date": "2028-12-31"
+    }
+  ],
+  "nil_deals": [
+    {
+      "athlete_id": "jane_doe",
+      "brand_id": "bodyarmor",
+      "deal_type": "endorsement",
+      "start_date": "2025-01-01",
+      "end_date": "2026-12-31"
+    }
+  ],
+  "competitors": [
+    { "brand_a_id": "nike", "brand_b_id": "adidas", "category": "apparel" },
+    { "brand_a_id": "nike", "brand_b_id": "under_armour", "category": "apparel" },
+    { "brand_a_id": "nike", "brand_b_id": "puma", "category": "apparel" },
+    { "brand_a_id": "gatorade", "brand_b_id": "bodyarmor", "category": "sports_drink" },
+    { "brand_a_id": "gatorade", "brand_b_id": "powerade", "category": "sports_drink" }
+  ]
+}
