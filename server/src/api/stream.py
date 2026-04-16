@@ -31,7 +31,7 @@ class SSEBus:
             "data": data,
             "timestamp": datetime.now(UTC).isoformat(),
         }
-        if event_type.startswith("deal"):
+        if event_type.startswith("deal") or event_type.startswith("fulfillment"):
             self._deal_history.append(event)
         if event_type == "agent_status":
             agent_id = data.get("agent_id", "")

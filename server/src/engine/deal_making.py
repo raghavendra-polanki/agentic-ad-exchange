@@ -1,7 +1,7 @@
 """Deal-making LangGraph state machine.
 
-Orchestrates: opportunity listing -> pre-screen -> matching -> proposals ->
-conflict check -> negotiation -> deal agreed/rejected/expired.
+Orchestrates: opportunity listing -> pre-screen -> match & score -> matching ->
+proposals -> conflict check -> negotiation -> deal agreed/rejected/expired.
 
 The node functions use the real conflict engine and store.
 The full graph is used for automated testing/demo. Individual node functions
@@ -45,6 +45,11 @@ def _get_store():
     return store
 
 
+def _get_matching_engine():
+    from src.matching import matching_engine
+    return matching_engine
+
+
 def call_conflict_prescreen(school: str, sport: str, brand: str) -> ConflictCheckResult:
     """Run pre-screen via the real conflict engine."""
     return _get_conflict_checker().pre_screen(school, sport, brand)
@@ -71,6 +76,17 @@ def get_registered_demand_agents() -> list[dict]:
         {"agent_id": "nike-agent-001", "organization": "Nike", "brand": "Nike"},
         {"agent_id": "gatorade-agent-001", "organization": "Gatorade", "brand": "Gatorade"},
     ]
+
+
+def get_demand_agent_profiles(agent_ids: list[str]):
+    """Look up full DemandAgentProfile objects from the store."""
+    store = _get_store()
+    profiles = []
+    for aid in agent_ids:
+        profile = store.get_agent(aid)
+        if profile is not None:
+            profiles.append(profile)
+    return profiles
 
 
 def simulate_demand_proposal(opportunity: dict, agent_id: str) -> Proposal:
@@ -171,6 +187,52 @@ def pre_screen(state: DealMakingState) -> dict:
         "state": DealState.PRE_SCREENING,
         "matched_agents": matched,
         "conflict_results": conflict_results,
+        "events": [evt],
+    }
+
+
+def match_and_score(state: DealMakingState) -> dict:
+    """Score conflict-cleared agents by relevance and filter by threshold.
+
+    Sits between pre_screen and notify_demand. Uses the matching engine
+    to rank agents and drop those below the relevance threshold.
+    """
+    deal_id = state["deal_id"]
+    matched_agents = state.get("matched_agents", [])
+    opportunity_data = state["opportunity"]
+
+    # Try to look up full agent profiles from the store
+    profiles = get_demand_agent_profiles(matched_agents)
+
+    if profiles:
+        # Reconstruct the OpportunityRecord for scoring
+        opp = OpportunityRecord(**opportunity_data)
+        engine = _get_matching_engine()
+        result = engine.score_agents(opp, profiles)
+
+        # Re-rank matched_agents by relevance (only those above threshold)
+        new_matched = result.matched_agent_ids
+        scores = [s.model_dump() for s in result.scored_agents]
+    else:
+        # No profiles in store (e.g. automated graph test with fallback agents).
+        # Keep all matched agents and assign placeholder scores.
+        new_matched = matched_agents
+        scores = [
+            {"demand_agent_id": aid, "organization": aid, "relevance_score": 50.0}
+            for aid in matched_agents
+        ]
+
+    evt = _event(
+        deal_id,
+        "match_and_score",
+        DealState.MATCHING,
+        f"Scored {len(scores)} agents, {len(new_matched)} above threshold.",
+    )
+
+    return {
+        "state": DealState.MATCHING,
+        "matched_agents": new_matched,
+        "match_scores": scores,
         "events": [evt],
     }
 
@@ -394,8 +456,8 @@ def deal_expired(state: DealMakingState) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def after_pre_screen(state: DealMakingState) -> str:
-    """Route after pre-screen: notify_demand if matches, else deal_expired."""
+def after_match_and_score(state: DealMakingState) -> str:
+    """Route after match & score: notify_demand if matches remain, else deal_expired."""
     if state.get("matched_agents"):
         return "notify_demand"
     return "deal_expired"
@@ -430,6 +492,7 @@ def create_deal_making_graph() -> StateGraph:
 
     graph.add_node("list_opportunity", list_opportunity)
     graph.add_node("pre_screen", pre_screen)
+    graph.add_node("match_and_score", match_and_score)
     graph.add_node("notify_demand", notify_demand)
     graph.add_node("receive_proposal", receive_proposal)
     graph.add_node("final_conflict_check", final_conflict_check)
@@ -442,11 +505,12 @@ def create_deal_making_graph() -> StateGraph:
     graph.set_entry_point("list_opportunity")
 
     graph.add_edge("list_opportunity", "pre_screen")
+    graph.add_edge("pre_screen", "match_and_score")
     graph.add_edge("notify_demand", "receive_proposal")
     graph.add_edge("receive_proposal", "final_conflict_check")
     graph.add_edge("forward_to_supply", "process_response")
 
-    graph.add_conditional_edges("pre_screen", after_pre_screen, {
+    graph.add_conditional_edges("match_and_score", after_match_and_score, {
         "notify_demand": "notify_demand",
         "deal_expired": "deal_expired",
     })
@@ -491,6 +555,7 @@ def run_deal_making(
         "negotiation_round": 1,
         "max_rounds": 3,
         "matched_agents": [],
+        "match_scores": [],
         "events": [],
         "error": None,
     }

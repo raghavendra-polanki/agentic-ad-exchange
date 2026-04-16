@@ -1,300 +1,64 @@
-/* Layout */
-.app {
+/* AAX Dashboard — Trading Floor Theme */
+
+/* ─── Layout ─── */
+.aax-dashboard {
   min-height: 100vh;
-  display: flex;
-  flex-direction: column;
+  padding: 16px;
+  box-sizing: border-box;
 }
 
-.header {
+.aax-header {
   display: flex;
   align-items: baseline;
-  gap: 16px;
-  padding: 16px 24px;
+  gap: 12px;
+  margin-bottom: 16px;
   border-bottom: 1px solid var(--border);
-  background: var(--bg-card);
+  padding-bottom: 12px;
 }
 
-.header h1 {
-  font-size: 20px;
+.aax-title {
   font-family: var(--mono);
-  letter-spacing: -0.5px;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--cyan);
   margin: 0;
+  letter-spacing: 2px;
 }
 
-.subtitle {
-  font-size: 13px;
+.aax-subtitle {
+  font-size: 14px;
   color: var(--text-dim);
+  font-family: var(--mono);
 }
 
-.main {
+.aax-main {
   display: grid;
-  grid-template-columns: 1fr 320px;
-  flex: 1;
-  overflow: hidden;
+  grid-template-columns: 2fr 1fr;
+  gap: 16px;
 }
 
-.deal-flow-section {
-  padding: 20px 24px;
-  overflow-y: auto;
-  max-height: calc(100vh - 60px);
+@media (max-width: 900px) {
+  .aax-main {
+    grid-template-columns: 1fr;
+  }
 }
 
-.sidebar {
-  border-left: 1px solid var(--border);
-  background: var(--bg-card);
-  overflow-y: auto;
-  max-height: calc(100vh - 60px);
-}
-
-/* Section headers */
-.section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+/* ─── Exchange Stats ─── */
+.exchange-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
   margin-bottom: 16px;
 }
 
-.section-header h2 {
-  font-size: 16px;
-  margin: 0;
-}
-
-.section-header h3 {
-  font-size: 14px;
-  margin: 0;
-}
-
-/* Connection status */
-.connection-status {
-  font-family: var(--mono);
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 10px;
-}
-
-.connection-status.online {
-  color: var(--green);
-  background: rgba(34, 197, 94, 0.1);
-}
-
-.connection-status.offline {
-  color: var(--orange);
-  background: rgba(245, 158, 11, 0.1);
-  animation: pulse 2s ease-in-out infinite;
-}
-
-.connection-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-}
-
-.connection-dot.online {
-  background: var(--green);
-  box-shadow: 0 0 6px var(--green);
-}
-
-.connection-dot.offline {
-  background: var(--text-dim);
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
-/* Deal Flow */
-.deal-flow {
-  width: 100%;
-}
-
-.deal-grid {
+.stat-card {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-}
-
-.deal-card {
-  background: var(--bg-card);
+  align-items: center;
+  padding: 12px;
+  background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 16px;
-  animation: slideIn 0.3s ease-out;
-  transition: border-color 0.2s;
-}
-
-.deal-card:hover {
-  border-color: #3a3a4a;
-}
-
-.deal-card.deal-failed {
-  opacity: 0.65;
-}
-
-@keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.deal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
-
-.deal-id {
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--text-dim);
-}
-
-.deal-state {
-  font-family: var(--mono);
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 10px;
-  color: #fff;
-  font-weight: 500;
-}
-
-.deal-moment {
-  font-size: 14px;
-  color: var(--text-bright);
-  margin-bottom: 10px;
-  line-height: 1.4;
-}
-
-.deal-agents {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
-  font-family: var(--mono);
-  font-size: 12px;
-}
-
-.agent-supply {
-  color: var(--cyan);
-}
-
-.deal-arrow {
-  color: var(--text-dim);
-}
-
-.agent-demand {
-  color: var(--purple);
-}
-
-/* Progress bar */
-.progress-bar {
-  width: 100%;
-  height: 3px;
-  background: var(--bg-elevated);
-  border-radius: 2px;
-  margin-bottom: 10px;
-  overflow: hidden;
-}
-
-.progress-fill {
-  height: 100%;
-  border-radius: 2px;
-  transition: width 0.5s ease-out;
-}
-
-.deal-terms {
-  display: flex;
-  gap: 12px;
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--gold);
-  margin-bottom: 6px;
-}
-
-.deal-format {
-  color: var(--text-dim);
-  padding: 1px 6px;
-  background: var(--bg-elevated);
-  border-radius: 4px;
-}
-
-.conflict-info {
-  font-size: 12px;
-  color: var(--red);
-  background: rgba(239, 68, 68, 0.08);
-  padding: 6px 10px;
-  border-radius: 4px;
-  margin-bottom: 6px;
-  border-left: 2px solid var(--red);
-}
-
-.negotiation-info {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--cyan);
-  margin-bottom: 6px;
-}
-
-.deal-reasoning {
-  font-size: 12px;
-  color: var(--text-dim);
-  font-style: italic;
-  margin-bottom: 6px;
-  line-height: 1.4;
-}
-
-.deal-timestamp {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--text-dim);
-  text-align: right;
-}
-
-/* Empty state */
-.empty-state {
-  text-align: center;
-  padding: 60px 20px;
-  color: var(--text-dim);
-}
-
-.empty-state p {
-  margin-bottom: 8px;
-}
-
-.empty-hint {
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--text-dim);
-  opacity: 0.6;
-}
-
-/* Exchange Stats */
-.exchange-stats {
-  padding: 20px;
-  border-bottom: 1px solid var(--border);
-}
-
-.exchange-stats h3 {
-  font-size: 14px;
-  margin-bottom: 14px;
-}
-
-.stats-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-
-.stat {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
 }
 
 .stat-value {
@@ -304,131 +68,264 @@
   color: var(--text-bright);
 }
 
-.stat-value.stat-active {
-  color: var(--green);
-}
-
-.stat-value.stat-conflict {
-  color: var(--red);
-}
-
 .stat-label {
-  font-size: 11px;
-  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  margin-top: 4px;
 }
 
-/* Agent Panel */
-.agent-panel {
-  padding: 20px;
+/* ─── Panel Titles ─── */
+.panel-title {
+  font-family: var(--mono);
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--text-dim);
+  margin: 0 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
 }
 
-.agent-panel .section-header {
-  margin-bottom: 12px;
-}
-
-.panel-empty {
-  font-size: 13px;
+.empty-state {
+  font-family: var(--mono);
+  font-size: 12px;
   color: var(--text-dim);
   text-align: center;
-  padding: 20px 0;
+  padding: 24px;
 }
 
-.agent-list {
-  list-style: none;
+/* ─── Deal Flow ─── */
+.deal-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.agent-item {
-  padding: 10px 12px;
+.deal-card {
   background: var(--bg-elevated);
-  border-radius: 6px;
-  border: 1px solid transparent;
-  transition: border-color 0.2s;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
 }
 
-.agent-item:hover {
-  border-color: var(--border);
-}
-
-.agent-row {
+.deal-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.deal-id {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.deal-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.deal-state {
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 3px;
+  background: var(--bg);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+}
+
+.deal-state.proposed { color: var(--gold); border-color: var(--gold); }
+.deal-state.negotiating { color: var(--cyan); border-color: var(--cyan); }
+.deal-state.deal_agreed { color: var(--green); border-color: var(--green); }
+.deal-state.rejected, .deal-state.expired { color: var(--red); border-color: var(--red); }
+.deal-state.completed { color: var(--green); border-color: var(--green); background: rgba(74, 222, 128, 0.1); }
+
+.deal-parties {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 12px;
   margin-bottom: 4px;
 }
 
-.status-dot {
-  width: 6px;
-  height: 6px;
+.deal-party.supply { color: var(--cyan); }
+.deal-party.demand { color: var(--gold); }
+.deal-arrow { color: var(--text-dim); }
+
+.deal-moment {
+  font-size: 12px;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.deal-price {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--green);
+}
+
+.deal-timestamp {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: 6px;
+  text-align: right;
+}
+
+/* ─── Match Scores ─── */
+.match-scores { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.match-badge { font-size: 11px; font-family: var(--mono); padding: 2px 6px; border-radius: 3px; background: var(--bg-elevated); }
+.match-badge.cleared { color: var(--green); }
+.match-badge.blocked { color: var(--red); opacity: 0.7; }
+
+/* ─── Deal Score Badge ─── */
+.deal-score { font-size: 11px; font-family: var(--mono); color: var(--gold); margin-left: 8px; }
+
+/* ─── Multi-Proposal List ─── */
+.proposals-list { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.proposal-item { display: flex; align-items: center; gap: 8px; font-size: 11px; font-family: var(--mono); padding: 4px 8px; background: var(--bg-elevated); border-radius: 4px; }
+.proposal-org { color: var(--text-bright); min-width: 80px; }
+.proposal-price { color: var(--gold); }
+.proposal-score { color: var(--text-dim); }
+.proposal-status.won { color: var(--green); }
+.proposal-status.blocked { color: var(--red); }
+.proposal-status.outbid { color: var(--text-dim); }
+
+/* ─── Fulfillment Tracker ─── */
+.fulfillment-tracker { margin-top: 8px; padding: 8px; background: var(--bg-elevated); border-radius: 6px; border-left: 2px solid var(--cyan); }
+.fulfillment-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--cyan); margin-bottom: 6px; }
+.fulfillment-steps { display: flex; gap: 2px; align-items: center; }
+.fulfillment-step { display: flex; flex-direction: column; align-items: center; gap: 2px; flex: 1; }
+.step-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--bg); border: 1px solid var(--border); }
+.fulfillment-step.done .step-dot { background: var(--cyan); border-color: var(--cyan); }
+.fulfillment-step.current .step-dot { background: var(--cyan); border-color: var(--cyan); box-shadow: 0 0 6px var(--cyan); }
+.step-label { font-size: 9px; color: var(--text-dim); font-family: var(--mono); }
+.fulfillment-step.done .step-label { color: var(--cyan); }
+.validation-result { margin-top: 6px; font-size: 11px; font-family: var(--mono); }
+.validation-pass { color: var(--green); }
+.validation-fail { color: var(--red); }
+.content-link { font-size: 10px; color: var(--text-dim); margin-top: 4px; word-break: break-all; }
+
+/* ─── Agent Panel ─── */
+.agent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.agent-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.agent-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.agent-status-dot {
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.status-dot.online {
-  background: var(--green);
-  box-shadow: 0 0 4px var(--green);
-}
-
-.status-dot.offline {
   background: var(--text-dim);
 }
 
-.agent-name {
-  font-size: 13px;
+.agent-status-dot.online { background: var(--green); box-shadow: 0 0 4px var(--green); }
+.agent-status-dot.busy { background: var(--gold); }
+.agent-status-dot.offline { background: var(--red); opacity: 0.5; }
+
+.agent-org {
+  font-family: var(--mono);
+  font-size: 12px;
   color: var(--text-bright);
-  font-weight: 500;
   flex: 1;
 }
 
-.agent-type {
+.agent-role {
   font-family: var(--mono);
   font-size: 10px;
-  padding: 1px 6px;
-  border-radius: 4px;
   text-transform: uppercase;
-  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
 }
 
-.type-supply {
-  color: var(--cyan);
-  background: rgba(6, 182, 212, 0.1);
-}
+.agent-role.supply { color: var(--cyan); border-color: var(--cyan); }
+.agent-role.demand { color: var(--gold); border-color: var(--gold); }
 
-.type-demand {
-  color: var(--purple);
-  background: rgba(139, 92, 246, 0.1);
-}
-
-.agent-meta {
+.agent-capabilities {
   display: flex;
-  justify-content: space-between;
-  font-size: 11px;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.capability-tag {
+  font-family: var(--mono);
+  font-size: 10px;
   color: var(--text-dim);
-  padding-left: 14px;
+  padding: 1px 5px;
+  background: var(--bg);
+  border-radius: 3px;
 }
 
-/* Responsive */
-@media (max-width: 768px) {
-  .main {
-    grid-template-columns: 1fr;
-  }
+/* ─── Phase 1 Agent Panel Classes (used by AgentPanel.tsx) ─── */
+.section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.section-header h2, .section-header h3 { margin: 0; font-family: var(--mono); font-size: 14px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-dim); }
+.connection-dot { width: 8px; height: 8px; border-radius: 50%; }
+.connection-dot.online { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.connection-dot.offline { background: var(--text-dim); }
+.connection-status { font-family: var(--mono); font-size: 12px; }
+.connection-status.online { color: var(--green); }
+.connection-status.offline { color: var(--text-dim); }
+.panel-empty { font-size: 12px; color: var(--text-dim); text-align: center; padding: 16px; }
+.agent-item { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 6px; padding: 10px; list-style: none; }
+.agent-item:hover { border-color: var(--text-dim); }
+.agent-row { display: flex; align-items: center; gap: 8px; }
+.status-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.status-dot.online { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.status-dot.offline { background: var(--text-dim); }
+.agent-name { font-family: var(--mono); font-size: 12px; color: var(--text-bright); flex: 1; }
+.agent-type { font-family: var(--mono); font-size: 10px; text-transform: uppercase; padding: 1px 6px; border-radius: 3px; border: 1px solid var(--border); }
+.type-supply { color: var(--cyan); border-color: var(--cyan); }
+.type-demand { color: var(--gold); border-color: var(--gold); }
+.agent-meta { display: flex; justify-content: space-between; margin-top: 4px; font-size: 11px; color: var(--text-dim); }
 
-  .sidebar {
-    border-left: none;
-    border-top: 1px solid var(--border);
-    max-height: none;
-  }
+/* ─── Phase 1 DealFlow Classes ─── */
+.deal-failed { opacity: 0.65; }
+.deal-grid { display: flex; flex-direction: column; gap: 8px; }
+.deal-agents { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12px; margin-bottom: 4px; }
+.agent-supply { color: var(--cyan); }
+.agent-demand { color: var(--purple); }
+.progress-bar { height: 3px; background: var(--bg); border-radius: 2px; margin-top: 6px; overflow: hidden; }
+.progress-fill { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
+.deal-terms { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+.deal-format { font-family: var(--mono); font-size: 10px; padding: 1px 6px; background: var(--bg-elevated); border-radius: 3px; color: var(--text-dim); }
+.deal-platforms { font-family: var(--mono); font-size: 10px; color: var(--text-dim); }
+.conflict-info { margin-top: 6px; padding: 6px 8px; border-left: 2px solid var(--red); background: rgba(239, 68, 68, 0.05); border-radius: 0 4px 4px 0; }
+.conflict-item { font-size: 11px; color: var(--red); }
+.conflict-badge { font-family: var(--mono); font-size: 9px; font-weight: 700; padding: 1px 4px; background: var(--red); color: var(--bg); border-radius: 2px; margin-right: 4px; }
+.matched-info { font-family: var(--mono); font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+.prescreen-results { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
+.prescreen-badge { font-family: var(--mono); font-size: 10px; padding: 1px 6px; border-radius: 3px; }
+.prescreen-badge.cleared { color: var(--green); background: rgba(34, 197, 94, 0.1); }
+.prescreen-badge.blocked { color: var(--red); background: rgba(239, 68, 68, 0.1); }
+.deal-reasoning { font-size: 11px; font-style: italic; color: var(--text-dim); margin-top: 4px; }
 
-  .deal-flow-section {
-    max-height: none;
-  }
-
-  .header {
-    flex-direction: column;
-    gap: 4px;
-  }
-}
+/* ─── Stats Grid ─── */
+.stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.stat { display: flex; flex-direction: column; align-items: center; padding: 8px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 6px; }
+.stat-green { color: var(--green); }
+.stat-red { color: var(--red); }

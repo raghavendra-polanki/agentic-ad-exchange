@@ -2,7 +2,8 @@ import { useMemo, useState, useEffect } from "react";
 import { useSSE } from "../hooks/useSSE";
 import type { AgentStatus } from "../types";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8080/api/v1";
+const API_BASE =
+  import.meta.env.VITE_API_BASE || "http://localhost:8080/api/v1";
 
 export function AgentPanel() {
   const { events, connected } = useSSE("agents");
@@ -21,14 +22,11 @@ export function AgentPanel() {
 
   const agents = useMemo(() => {
     const agentMap = new Map<string, AgentStatus>();
-
     for (const a of restAgents) {
       agentMap.set(a.agent_id, { ...a, status: "online" });
     }
-
     for (let i = events.length - 1; i >= 0; i--) {
-      const evt = events[i];
-      const data = evt.data as AgentStatus;
+      const data = events[i].data as AgentStatus;
       if (data.agent_id) {
         agentMap.set(data.agent_id, data);
       }

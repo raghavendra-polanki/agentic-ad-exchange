@@ -7,6 +7,24 @@ from src.store import store
 router = APIRouter()
 
 
+@router.get("/stats")
+async def get_stats():
+    """Summary statistics for the dashboard."""
+    deals = list(store.deals.values())
+    terminal = {"deal_rejected", "deal_expired", "completed", "conflict_blocked"}
+    active = [d for d in deals if d.state not in terminal]
+    agreed = [d for d in deals if d.state in ("deal_agreed", "completed")]
+    total = max(len(deals), 1)
+    return {
+        "total_deals": len(deals),
+        "active_deals": len(active),
+        "completed_deals": len(agreed),
+        "conflict_rate": round(
+            len([d for d in deals if d.state == "deal_rejected"]) / total * 100,
+        ),
+    }
+
+
 @router.get("")
 async def list_deals():
     """List all deals (for dashboard)."""

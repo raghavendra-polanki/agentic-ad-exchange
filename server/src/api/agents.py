@@ -60,4 +60,13 @@ async def poll_notifications(agent_id: str):
     agent = store.get_agent(agent_id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    return {"notifications": [], "agent_id": agent_id}
+
+    notifications = []
+    for opp in store.opportunities.values():
+        if agent_id in opp.matched_demand_agents:
+            notifications.append({
+                "type": "opportunity",
+                "opportunity_id": opp.opportunity_id,
+                "signal": opp.signal.model_dump(mode="json"),
+            })
+    return {"notifications": notifications, "agent_id": agent_id}

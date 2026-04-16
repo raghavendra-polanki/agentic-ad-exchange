@@ -73,6 +73,33 @@ class AAXAgentClient:
         resp.raise_for_status()
         return resp.json()
 
+    async def poll_notifications(self) -> list[dict]:
+        """GET /agents/{agent_id}/notifications"""
+        resp = await self.http.get(
+            f"{self.exchange_url}/agents/{self.agent_id}/notifications",
+            headers=self._auth_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json().get("notifications", [])
+
+    async def get_deal_trace(self, deal_id: str) -> dict:
+        """GET /deals/{deal_id}/trace"""
+        resp = await self.http.get(
+            f"{self.exchange_url}/deals/{deal_id}/trace",
+            headers=self._auth_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    async def pass_opportunity(self, opportunity_id: str) -> dict:
+        """POST /opportunities/{opportunity_id}/pass"""
+        resp = await self.http.post(
+            f"{self.exchange_url}/opportunities/{opportunity_id}/pass",
+            headers=self._auth_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     def _auth_headers(self) -> dict:
         return {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
 

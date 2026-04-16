@@ -3,7 +3,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from src.api.deps import get_current_agent
-from src.engine.orchestrator import handle_signal_opportunity, handle_submit_proposal
+from src.engine.orchestrator import (
+    handle_select_winner,
+    handle_signal_opportunity,
+    handle_submit_proposal,
+)
 from src.schemas.opportunities import OpportunitySignal
 from src.schemas.proposals import Proposal
 
@@ -39,3 +43,15 @@ async def pass_opportunity(
 ):
     """Demand agent declines an opportunity."""
     return {"status": "passed", "opportunity_id": opportunity_id, "agent_id": agent.agent_id}
+
+
+@router.post("/{opportunity_id}/select-winner")
+async def select_winner(
+    opportunity_id: str,
+    agent=Depends(get_current_agent),
+):
+    """Select the best proposal for an opportunity."""
+    result = await handle_select_winner(opportunity_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Opportunity not found")
+    return result

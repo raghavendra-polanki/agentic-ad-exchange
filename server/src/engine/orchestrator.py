@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 
 from src.api.stream import sse_bus
 from src.conflict import conflict_checker
+from src.engine.timeout import timeout_manager
 from src.schemas.agents import DemandAgentProfile, SupplyAgentProfile
 from src.schemas.deals import DealAgreement, DealState, DealSummary
 from src.schemas.opportunities import OpportunitySignal
@@ -20,12 +21,40 @@ from src.schemas.proposals import (
 )
 from src.store import store
 
+# Default timeout for deals (seconds). 120s for demo pacing.
+DEFAULT_DEAL_TIMEOUT = 120
+
+
+def _on_deal_expired(deal_id: str) -> None:
+    """Sync callback fired by TimeoutManager when a deal expires."""
+    import asyncio
+
+    deal = store.deals.get(deal_id)
+    if not deal or deal.state in (
+        DealState.DEAL_AGREED,
+        DealState.DEAL_REJECTED,
+        DealState.DEAL_EXPIRED,
+    ):
+        return  # already terminal
+
+    store.update_deal(deal_id, state=DealState.DEAL_EXPIRED)
+
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(sse_bus.publish("deal_expired", {
+            "deal_id": deal_id,
+            "state": DealState.DEAL_EXPIRED,
+            "timestamp": datetime.now(UTC).isoformat(),
+        }))
+    except RuntimeError:
+        pass
+
 
 async def handle_signal_opportunity(
     agent: SupplyAgentProfile,
     signal: OpportunitySignal,
 ) -> dict:
-    """Supply agent signals a new opportunity. Runs pre-screen and creates deal."""
+    """Supply agent signals a new opportunity. Runs pre-screen, creates deal."""
     opp = store.create_opportunity(agent.agent_id, agent.organization, signal)
 
     demand_agents = store.get_demand_agents()
@@ -40,7 +69,9 @@ async def handle_signal_opportunity(
             "agent_id": da.agent_id,
             "organization": da.organization,
             "status": result.status,
-            "conflicts": [c.model_dump(mode="json") for c in result.conflicts],
+            "conflicts": [
+                c.model_dump(mode="json") for c in result.conflicts
+            ],
         })
         if result.status == "cleared":
             matched.append(da.agent_id)
@@ -56,6 +87,14 @@ async def handle_signal_opportunity(
         moment_description=signal.content_description,
     )
     store.create_deal(deal)
+
+    # Register deal timeout
+    try:
+        timeout_manager.register(
+            deal_id, DEFAULT_DEAL_TIMEOUT, _on_deal_expired,
+        )
+    except RuntimeError:
+        pass  # no event loop (tests)
 
     await sse_bus.publish("deal_created", {
         "deal_id": deal_id,
@@ -101,13 +140,18 @@ async def handle_submit_proposal(
     school = opp.signal.subjects[0].school if opp.signal.subjects else ""
     sport = opp.signal.subjects[0].sport if opp.signal.subjects else ""
 
-    conflict_result = conflict_checker.final_check(school, sport, agent.organization, athlete_names)
+    conflict_result = conflict_checker.final_check(
+        school, sport, agent.organization, athlete_names,
+    )
 
     if conflict_result.status == "blocked":
         await sse_bus.publish("conflict_blocked", {
             "opportunity_id": opportunity_id,
             "demand_org": agent.organization,
-            "conflicts": [c.model_dump(mode="json") for c in conflict_result.conflicts],
+            "conflicts": [
+                c.model_dump(mode="json")
+                for c in conflict_result.conflicts
+            ],
             "timestamp": datetime.now(UTC).isoformat(),
         })
 
@@ -128,10 +172,14 @@ async def handle_submit_proposal(
 
     for deal in store.deals.values():
         if deal.opportunity_id == opportunity_id:
-            store.update_deal(deal.deal_id,
+            new_ids = deal.all_proposal_ids + [prop.proposal_id]
+            store.update_deal(
+                deal.deal_id,
                 state=DealState.AWAITING_SUPPLY_EVAL,
                 demand_org=agent.organization,
-                deal_terms=proposal.deal_terms)
+                deal_terms=proposal.deal_terms,
+                all_proposal_ids=new_ids,
+            )
 
             await sse_bus.publish("deal_update", {
                 "deal_id": deal.deal_id,
@@ -141,7 +189,10 @@ async def handle_submit_proposal(
                 "demand_org": agent.organization,
                 "moment_description": deal.moment_description,
                 "deal_terms": proposal.deal_terms.model_dump(mode="json"),
-                "scores": proposal.scores.model_dump(mode="json") if proposal.scores else None,
+                "scores": (
+                    proposal.scores.model_dump(mode="json")
+                    if proposal.scores else None
+                ),
                 "reasoning": proposal.reasoning,
                 "timestamp": datetime.now(UTC).isoformat(),
             })
@@ -152,7 +203,10 @@ async def handle_submit_proposal(
         "status": "submitted",
         "conflict_status": "cleared",
         "valid_actions": ["wait_for_supply_evaluation"],
-        "constraints": {"max_counter_rounds": 3, "response_timeout_seconds": 600},
+        "constraints": {
+            "max_counter_rounds": 3,
+            "response_timeout_seconds": 600,
+        },
     }
 
 
@@ -173,11 +227,18 @@ async def handle_respond_to_proposal(
             break
 
     if response.decision == EvaluationDecision.ACCEPT:
-        prop_updated = prop.model_copy(update={"status": ProposalStatus.ACCEPTED})
+        prop_updated = prop.model_copy(
+            update={"status": ProposalStatus.ACCEPTED},
+        )
         store.proposals[proposal_id] = prop_updated
 
         if deal:
-            store.update_deal(deal.deal_id, state=DealState.DEAL_AGREED)
+            store.update_deal(
+                deal.deal_id,
+                state=DealState.DEAL_AGREED,
+                winning_proposal_id=proposal_id,
+            )
+            timeout_manager.cancel(deal.deal_id)
 
             agreement = DealAgreement(
                 deal_id=deal.deal_id,
@@ -188,7 +249,9 @@ async def handle_respond_to_proposal(
                 supply_org=deal.supply_org,
                 demand_org=prop.demand_org,
             )
-            store.deal_results[deal.deal_id] = agreement.model_dump(mode="json")
+            store.deal_results[deal.deal_id] = agreement.model_dump(
+                mode="json",
+            )
 
             await sse_bus.publish("deal_agreed", {
                 "deal_id": deal.deal_id,
@@ -198,7 +261,10 @@ async def handle_respond_to_proposal(
                 "moment_description": deal.moment_description,
                 "deal_terms": prop.deal_terms.model_dump(mode="json"),
                 "reasoning": response.reasoning,
-                "scores": response.scores.model_dump(mode="json") if response.scores else None,
+                "scores": (
+                    response.scores.model_dump(mode="json")
+                    if response.scores else None
+                ),
                 "timestamp": datetime.now(UTC).isoformat(),
             })
 
@@ -212,11 +278,14 @@ async def handle_respond_to_proposal(
         }
 
     elif response.decision == EvaluationDecision.REJECT:
-        prop_updated = prop.model_copy(update={"status": ProposalStatus.REJECTED})
+        prop_updated = prop.model_copy(
+            update={"status": ProposalStatus.REJECTED},
+        )
         store.proposals[proposal_id] = prop_updated
 
         if deal:
             store.update_deal(deal.deal_id, state=DealState.DEAL_REJECTED)
+            timeout_manager.cancel(deal.deal_id)
             await sse_bus.publish("deal_update", {
                 "deal_id": deal.deal_id,
                 "state": DealState.DEAL_REJECTED,
@@ -227,7 +296,19 @@ async def handle_respond_to_proposal(
         return {"status": "rejected", "reasoning": response.reasoning}
 
     else:  # COUNTER
-        prop_updated = prop.model_copy(update={"status": ProposalStatus.COUNTERED})
+        # Enforce max negotiation rounds
+        if deal and prop.round >= deal.max_rounds:
+            return {
+                "status": "error",
+                "detail": (
+                    f"Maximum negotiation rounds ({deal.max_rounds})"
+                    " reached. Accept or reject."
+                ),
+            }
+
+        prop_updated = prop.model_copy(
+            update={"status": ProposalStatus.COUNTERED},
+        )
         store.proposals[proposal_id] = prop_updated
         new_round = prop.round + 1
 
@@ -259,3 +340,68 @@ async def handle_respond_to_proposal(
             "round": new_round,
             "counter_terms": counter,
         }
+
+
+async def handle_select_winner(opportunity_id: str) -> dict | None:
+    """Select the best non-blocked proposal for an opportunity."""
+    opp = store.opportunities.get(opportunity_id)
+    if not opp:
+        return None
+
+    # Gather all proposals for this opportunity
+    proposals = [
+        p for p in store.proposals.values()
+        if p.opportunity_id == opportunity_id
+        and p.status != ProposalStatus.CONFLICT_BLOCKED
+    ]
+
+    if not proposals:
+        return {"status": "no_proposals", "opportunity_id": opportunity_id}
+
+    # Sort by overall score (descending), then by price (descending)
+    def sort_key(p):
+        score = p.scores.overall if p.scores else 0
+        price = p.deal_terms.price.amount if p.deal_terms else 0
+        return (score, price)
+
+    proposals.sort(key=sort_key, reverse=True)
+    winner = proposals[0]
+
+    # Update deal with winner
+    for deal in store.deals.values():
+        if deal.opportunity_id == opportunity_id:
+            store.update_deal(
+                deal.deal_id,
+                state=DealState.AWAITING_SUPPLY_EVAL,
+                demand_org=winner.demand_org,
+                deal_terms=winner.deal_terms,
+                winning_proposal_id=winner.proposal_id,
+            )
+
+            await sse_bus.publish("proposals_ranked", {
+                "deal_id": deal.deal_id,
+                "opportunity_id": opportunity_id,
+                "state": DealState.AWAITING_SUPPLY_EVAL,
+                "winning_proposal_id": winner.proposal_id,
+                "all_proposals": [
+                    {
+                        "proposal_id": p.proposal_id,
+                        "demand_org": p.demand_org,
+                        "price": (
+                            p.deal_terms.price.amount if p.deal_terms else 0
+                        ),
+                        "score": p.scores.overall if p.scores else 0,
+                        "status": "won" if p == winner else "outbid",
+                    }
+                    for p in proposals
+                ],
+                "timestamp": datetime.now(UTC).isoformat(),
+            })
+            break
+
+    return {
+        "status": "winner_selected",
+        "proposal_id": winner.proposal_id,
+        "demand_org": winner.demand_org,
+        "price": winner.deal_terms.price.amount if winner.deal_terms else 0,
+    }

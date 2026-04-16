@@ -86,18 +86,33 @@ def _event(deal_id: str, action: str, state: str, detail: str = "") -> dict:
 
 
 def generate_brief(state: FulfillmentState) -> dict:
-    """Compile DealAgreement into a CreativeBrief."""
+    """Compile DealAgreement into a CreativeBrief.
+
+    Populates athlete_name, school, sport, and moment_description from the
+    opportunity data embedded in the agreement when available.
+    """
     deal_id = state["deal_id"]
     agreement = state["agreement"]
+
+    # Extract opportunity context from agreement if present
+    opp = agreement.get("opportunity", {})
+    signal = opp.get("signal", {})
+    subjects = signal.get("subjects", [])
+    first_subject = subjects[0] if subjects else {}
+
+    athlete_name = first_subject.get("athlete_name", "")
+    school = first_subject.get("school", "")
+    sport = first_subject.get("sport", "")
+    moment_description = signal.get("content_description", "")
 
     brief = CreativeBrief(
         deal_id=deal_id,
         deal_terms=DealTerms(**agreement["final_terms"]),
         brand_name=agreement.get("demand_org", ""),
-        athlete_name="",  # would come from opportunity in full implementation
-        school="",
-        sport="",
-        moment_description="",
+        athlete_name=athlete_name,
+        school=school,
+        sport=sport,
+        moment_description=moment_description,
     )
 
     evt = _event(deal_id, "generate_brief", FulfillmentStateEnum.BRIEF_GENERATED, "Brief compiled.")

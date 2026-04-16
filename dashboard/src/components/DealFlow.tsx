@@ -1,13 +1,15 @@
 import { useMemo, useState, useEffect } from "react";
 import { useSSE } from "../hooks/useSSE";
+import { FulfillmentTracker } from "./FulfillmentTracker";
 import type { DealEvent } from "../types";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8080/api/v1";
+const API_BASE =
+  import.meta.env.VITE_API_BASE || "http://localhost:8080/api/v1";
 
 const STATE_PROGRESS: Record<string, number> = {
   opportunity_listed: 10,
   pre_screening: 20,
-  matching: 30,
+  matching: 25,
   awaiting_proposals: 40,
   proposal_received: 50,
   final_conflict_check: 60,
@@ -52,9 +54,16 @@ function DealCard({ deal }: { deal: DealEvent }) {
     <div className={`deal-card ${isFailed ? "deal-failed" : ""}`}>
       <div className="deal-header">
         <span className="deal-id">{deal.deal_id}</span>
-        <span className="deal-state" style={{ backgroundColor: color }}>
-          {formatState(deal.state)}
-        </span>
+        <div className="deal-badges">
+          <span className="deal-state" style={{ backgroundColor: color }}>
+            {formatState(deal.state)}
+          </span>
+          {deal.scores && (
+            <span className="deal-score">
+              Score: {deal.scores.overall}/100
+            </span>
+          )}
+        </div>
       </div>
 
       <p className="deal-moment">{deal.moment_description || "Deal"}</p>
@@ -83,8 +92,45 @@ function DealCard({ deal }: { deal: DealEvent }) {
             <span className="deal-format">{deal.deal_terms.content_format}</span>
           )}
           {deal.deal_terms.platforms && deal.deal_terms.platforms.length > 0 && (
-            <span className="deal-platforms">{deal.deal_terms.platforms.join(", ")}</span>
+            <span className="deal-platforms">
+              {deal.deal_terms.platforms.join(", ")}
+            </span>
           )}
+        </div>
+      )}
+
+      {deal.match_scores && deal.match_scores.length > 0 && (
+        <div className="match-scores">
+          {deal.match_scores.map((ms, i) => (
+            <span
+              key={i}
+              className={`match-badge ${ms.conflict_status}`}
+            >
+              {ms.organization}: {Math.round(ms.relevance_score)}
+              {ms.conflict_status === "blocked" ? " \u2717" : " \u2713"}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {deal.all_proposals && deal.all_proposals.length > 0 && (
+        <div className="proposals-list">
+          {deal.all_proposals.map((p, i) => (
+            <div key={i} className={`proposal-item ${p.status}`}>
+              <span className="proposal-org">{p.demand_org}</span>
+              <span className="proposal-price">
+                ${p.price?.toLocaleString()}
+              </span>
+              <span className="proposal-score">{p.score}/100</span>
+              <span className={`proposal-status ${p.status}`}>
+                {p.status === "won"
+                  ? "\u2605"
+                  : p.status === "blocked"
+                    ? "\u2717"
+                    : "\u2014"}
+              </span>
+            </div>
+          ))}
         </div>
       )}
 
@@ -108,7 +154,7 @@ function DealCard({ deal }: { deal: DealEvent }) {
         <div className="prescreen-results">
           {deal.prescreen_results.map((r, i) => (
             <span key={i} className={`prescreen-badge ${r.status}`}>
-              {r.organization}: {r.status === "cleared" ? "✓" : "✗"}
+              {r.organization}: {r.status === "cleared" ? "\u2713" : "\u2717"}
             </span>
           ))}
         </div>
@@ -117,6 +163,8 @@ function DealCard({ deal }: { deal: DealEvent }) {
       {deal.reasoning && (
         <div className="deal-reasoning">&ldquo;{deal.reasoning}&rdquo;</div>
       )}
+
+      <FulfillmentTracker deal={deal} />
 
       <div className="deal-timestamp">
         {new Date(deal.timestamp).toLocaleTimeString()}
@@ -129,31 +177,30 @@ export function DealFlow() {
   const { events, connected } = useSSE("deals");
   const [restDeals, setRestDeals] = useState<DealEvent[]>([]);
 
-  // Fetch existing deals on mount
   useEffect(() => {
     fetch(`${API_BASE}/deals`)
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data)) {
-          setRestDeals(data.map((d: Record<string, unknown>) => ({
-            ...d,
-            timestamp: (d.updated_at as string) || (d.created_at as string) || new Date().toISOString(),
-          })) as DealEvent[]);
+          setRestDeals(
+            data.map((d: Record<string, unknown>) => ({
+              ...d,
+              timestamp:
+                (d.updated_at as string) ||
+                (d.created_at as string) ||
+                new Date().toISOString(),
+            })) as DealEvent[],
+          );
         }
       })
       .catch(() => {});
   }, []);
 
-  // Merge REST deals with SSE events
   const deals = useMemo(() => {
     const dealMap = new Map<string, DealEvent>();
-
-    // Add REST deals first
     for (const d of restDeals) {
       dealMap.set(d.deal_id, d);
     }
-
-    // Overlay SSE events (newer data wins)
     for (let i = events.length - 1; i >= 0; i--) {
       const evt = events[i];
       const data = evt.data as DealEvent;
@@ -166,14 +213,20 @@ export function DealFlow() {
         } as DealEvent);
       }
     }
-
     const allDeals = Array.from(dealMap.values());
-    const failedStates = new Set(["deal_rejected", "deal_expired", "conflict_blocked", "completed"]);
+    const failedStates = new Set([
+      "deal_rejected",
+      "deal_expired",
+      "conflict_blocked",
+      "completed",
+    ]);
     allDeals.sort((a, b) => {
       const aActive = !failedStates.has(a.state);
       const bActive = !failedStates.has(b.state);
       if (aActive !== bActive) return aActive ? -1 : 1;
-      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+      return (
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      );
     });
     return allDeals;
   }, [events, restDeals]);
@@ -182,8 +235,10 @@ export function DealFlow() {
     <div className="deal-flow">
       <div className="section-header">
         <h2>Live Deal Flow</h2>
-        <span className={`connection-status ${connected ? "online" : "offline"}`}>
-          {connected ? "● Connected" : "○ Connecting..."}
+        <span
+          className={`connection-status ${connected ? "online" : "offline"}`}
+        >
+          {connected ? "\u25CF Connected" : "\u25CB Connecting..."}
         </span>
       </div>
       {deals.length === 0 ? (

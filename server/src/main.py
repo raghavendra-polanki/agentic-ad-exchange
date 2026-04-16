@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -12,7 +13,25 @@ async def lifespan(app: FastAPI):
     # Startup: load conflict graph seed data
     init_conflict_engine()
     print("AAX Exchange started — conflict engine loaded")
+
+    # Bridge engine EventBus → SSE bus so LangGraph events reach dashboard
+    async def _bridge_events():
+        from src.api.stream import sse_bus
+        from src.engine.events import event_bus
+
+        queue = event_bus.subscribe()
+        try:
+            while True:
+                event = await queue.get()
+                await sse_bus.publish(event["type"], event["data"])
+        except asyncio.CancelledError:
+            event_bus.unsubscribe(queue)
+
+    bridge_task = asyncio.create_task(_bridge_events())
+
     yield
+
+    bridge_task.cancel()
     print("AAX Exchange shutting down")
 
 
