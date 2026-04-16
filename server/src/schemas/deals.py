@@ -127,3 +127,5 @@ class DealSummary(BaseModel):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     negotiation_round: int = 0
     max_rounds: int = 3
+    winning_proposal_id: str | None = None
+    all_proposal_ids: list[str] = Field(default_factory=list)

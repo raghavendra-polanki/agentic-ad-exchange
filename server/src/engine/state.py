@@ -20,6 +20,7 @@ class DealMakingState(TypedDict, total=False):
     negotiation_round: int
     max_rounds: int  # default 3
     matched_agents: list[str]  # demand agent IDs that passed pre-screen
+    match_scores: list[dict]  # serialized MatchScore list from matching engine
     events: Annotated[list[dict], _append]  # audit trail
     error: str | None
 

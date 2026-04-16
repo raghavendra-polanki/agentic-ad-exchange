@@ -30,6 +30,7 @@ from src.schemas.deals import (
     Price,
     ValidationResult,
 )
+from src.schemas.matching import MatchResult, MatchScore
 from src.schemas.opportunities import (
     AudienceInfo,
     OpportunityNotification,
@@ -73,6 +74,8 @@ __all__ = [
     "FulfillmentState",
     "Price",
     "ValidationResult",
+    "MatchResult",
+    "MatchScore",
     "AudienceInfo",
     "OpportunityNotification",
     "OpportunitySignal",

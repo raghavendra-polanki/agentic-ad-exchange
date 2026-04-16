@@ -36,6 +36,30 @@ export interface ScoreBreakdown {
   reasoning?: string;
 }
 
+export interface MatchScoreEntry {
+  organization: string;
+  relevance_score: number;
+  conflict_status: string;
+  sport_match?: number;
+  reach_match?: number;
+  budget_match?: number;
+  format_match?: number;
+}
+
+export interface ProposalSummary {
+  proposal_id: string;
+  demand_org: string;
+  price: number;
+  score: number;
+  status: string;
+}
+
+export interface ValidationInfo {
+  passed: boolean;
+  score: number;
+  checks: Record<string, boolean>;
+}
+
 export interface DealEvent {
   deal_id: string;
   opportunity_id: string;
@@ -52,6 +76,12 @@ export interface DealEvent {
   max_rounds?: number;
   matched_count?: number;
   prescreen_results?: PrescreenResult[];
+  match_scores?: MatchScoreEntry[];
+  all_proposals?: ProposalSummary[];
+  winning_proposal_id?: string;
+  fulfillment_state?: string;
+  content_url?: string;
+  validation?: ValidationInfo;
   timestamp: string;
 }
 
