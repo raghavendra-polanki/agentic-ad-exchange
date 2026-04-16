@@ -11,7 +11,7 @@ class AAXAgentClient:
         self.exchange_url = exchange_url
         self.agent_id: str | None = None
         self.api_key: str | None = None
-        self.http = httpx.AsyncClient(timeout=30.0)
+        self.http = httpx.AsyncClient(timeout=30.0, follow_redirects=True)
 
     async def register(self, registration: dict) -> dict:
         """POST /agents/register"""

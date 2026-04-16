@@ -2,7 +2,7 @@
 
 import secrets
 import uuid
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 from src.schemas.agents import (
     AgentCredentials,
@@ -12,8 +12,8 @@ from src.schemas.agents import (
     SupplyAgentProfile,
 )
 from src.schemas.deals import DealSummary
-from src.schemas.opportunities import OpportunityRecord, OpportunityStatus
-from src.schemas.proposals import ProposalRecord, ProposalStatus
+from src.schemas.opportunities import OpportunityRecord
+from src.schemas.proposals import ProposalRecord
 
 
 class ExchangeStore:
@@ -39,7 +39,10 @@ class ExchangeStore:
                 organization=req.organization,
                 description=req.description,
                 callback_url=str(req.callback_url) if req.callback_url else None,
-                capabilities=req.supply_capabilities or SupplyAgentProfile.model_fields["capabilities"].default,
+                capabilities=(
+                    req.supply_capabilities
+                    or SupplyAgentProfile.model_fields["capabilities"].default
+                ),
             )
         else:
             profile = DemandAgentProfile(
@@ -48,7 +51,10 @@ class ExchangeStore:
                 organization=req.organization,
                 description=req.description,
                 callback_url=str(req.callback_url) if req.callback_url else None,
-                brand_profile=req.brand_profile or DemandAgentProfile.model_fields["brand_profile"].default,
+                brand_profile=(
+                    req.brand_profile
+                    or DemandAgentProfile.model_fields["brand_profile"].default
+                ),
                 standing_queries=req.standing_queries,
             )
 
@@ -67,12 +73,20 @@ class ExchangeStore:
         return self.agents.get(agent_id)
 
     def get_demand_agents(self) -> list[DemandAgentProfile]:
-        return [a for a in self.agents.values() if isinstance(a, DemandAgentProfile) and a.is_active]
+        return [
+            a for a in self.agents.values()
+            if isinstance(a, DemandAgentProfile) and a.is_active
+        ]
 
     def get_supply_agents(self) -> list[SupplyAgentProfile]:
-        return [a for a in self.agents.values() if isinstance(a, SupplyAgentProfile) and a.is_active]
+        return [
+            a for a in self.agents.values()
+            if isinstance(a, SupplyAgentProfile) and a.is_active
+        ]
 
-    def create_opportunity(self, supply_agent_id: str, supply_org: str, signal) -> OpportunityRecord:
+    def create_opportunity(
+        self, supply_agent_id: str, supply_org: str, signal,
+    ) -> OpportunityRecord:
         opp_id = f"opp_{uuid.uuid4().hex[:8]}"
         record = OpportunityRecord(
             opportunity_id=opp_id,
@@ -94,11 +108,8 @@ class ExchangeStore:
 
     def update_deal(self, deal_id: str, **kwargs):
         if deal_id in self.deals:
-            deal = self.deals[deal_id]
-            for k, v in kwargs.items():
-                if hasattr(deal, k):
-                    object.__setattr__(deal, k, v)
-            object.__setattr__(deal, 'updated_at', datetime.now(UTC))
+            kwargs["updated_at"] = datetime.now(UTC)
+            self.deals[deal_id] = self.deals[deal_id].model_copy(update=kwargs)
 
     def add_deal_event(self, deal_id: str, event: dict):
         if deal_id not in self.deal_events:

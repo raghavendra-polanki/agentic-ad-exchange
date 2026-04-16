@@ -1,12 +1,12 @@
 """Agent registration and profile schemas."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field, HttpUrl
 
-from src.schemas.common import ContentFormat, Platform, Sport
+from src.schemas.common import ContentFormat, Sport
 
 
 class AgentType(StrEnum):
@@ -77,7 +77,7 @@ class AgentCredentials(BaseModel):
     agent_id: str
     api_key: str
     status: str = "registered"
-    registered_at: datetime = Field(default_factory=datetime.utcnow)
+    registered_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class SupplyAgentProfile(BaseModel):
@@ -91,7 +91,7 @@ class SupplyAgentProfile(BaseModel):
     callback_url: str | None = None
     capabilities: SupplyCapabilities = Field(default_factory=SupplyCapabilities)
     is_active: bool = True
-    registered_at: datetime = Field(default_factory=datetime.utcnow)
+    registered_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     reputation_score: float = 5.0
 
 
@@ -107,6 +107,6 @@ class DemandAgentProfile(BaseModel):
     brand_profile: BrandProfile = Field(default_factory=BrandProfile)
     standing_queries: list[StandingQuery] = Field(default_factory=list)
     is_active: bool = True
-    registered_at: datetime = Field(default_factory=datetime.utcnow)
+    registered_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     reputation_score: float = 5.0
     total_spend: float = 0.0

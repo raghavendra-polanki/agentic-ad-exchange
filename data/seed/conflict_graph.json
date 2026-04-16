@@ -1,19 +1,25 @@
 {
   "schools": [
-    { "school_id": "mit", "name": "MIT", "conference": "NEWMAC" }
+    { "school_id": "mit", "name": "MIT", "conference": "NEWMAC" },
+    { "school_id": "duke", "name": "Duke University", "conference": "ACC" },
+    { "school_id": "unc", "name": "University of North Carolina", "conference": "ACC" }
   ],
   "athletes": [
-    { "athlete_id": "jane_doe", "name": "Jane Doe", "school_id": "mit", "sport": "basketball" }
+    { "athlete_id": "jane_doe", "name": "Jane Doe", "school_id": "mit", "sport": "basketball" },
+    { "athlete_id": "john_smith", "name": "John Smith", "school_id": "duke", "sport": "basketball" },
+    { "athlete_id": "sarah_jones", "name": "Sarah Jones", "school_id": "unc", "sport": "basketball" }
   ],
   "brands": [
     { "brand_id": "nike", "name": "Nike", "category": "apparel" },
     { "brand_id": "adidas", "name": "Adidas", "category": "apparel" },
     { "brand_id": "gatorade", "name": "Gatorade", "category": "sports_drink" },
     { "brand_id": "bodyarmor", "name": "BodyArmor", "category": "sports_drink" },
+    { "brand_id": "beats", "name": "Beats Audio", "category": "audio" },
     { "brand_id": "campus_pizza", "name": "Campus Pizza", "category": "food" }
   ],
   "conferences": [
-    { "conference_id": "newmac", "name": "NEWMAC" }
+    { "conference_id": "newmac", "name": "NEWMAC" },
+    { "conference_id": "acc", "name": "ACC" }
   ],
   "sponsorships": [
     {
@@ -22,6 +28,20 @@
       "category": "apparel",
       "start_date": "2024-01-01",
       "end_date": "2028-12-31"
+    },
+    {
+      "school_id": "duke",
+      "brand_id": "nike",
+      "category": "apparel",
+      "start_date": "2023-01-01",
+      "end_date": "2029-12-31"
+    },
+    {
+      "school_id": "unc",
+      "brand_id": "adidas",
+      "category": "apparel",
+      "start_date": "2024-01-01",
+      "end_date": "2030-12-31"
     }
   ],
   "nil_deals": [
@@ -31,6 +51,13 @@
       "deal_type": "endorsement",
       "start_date": "2025-01-01",
       "end_date": "2026-12-31"
+    },
+    {
+      "athlete_id": "john_smith",
+      "brand_id": "beats",
+      "deal_type": "endorsement",
+      "start_date": "2025-09-01",
+      "end_date": "2026-08-31"
     }
   ],
   "competitors": [
@@ -38,6 +65,8 @@
     { "brand_a_id": "nike", "brand_b_id": "under_armour", "category": "apparel" },
     { "brand_a_id": "nike", "brand_b_id": "puma", "category": "apparel" },
     { "brand_a_id": "gatorade", "brand_b_id": "bodyarmor", "category": "sports_drink" },
-    { "brand_a_id": "gatorade", "brand_b_id": "powerade", "category": "sports_drink" }
+    { "brand_a_id": "gatorade", "brand_b_id": "powerade", "category": "sports_drink" },
+    { "brand_a_id": "beats", "brand_b_id": "bose", "category": "audio" },
+    { "brand_a_id": "beats", "brand_b_id": "sony_audio", "category": "audio" }
   ]
 }

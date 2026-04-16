@@ -1,6 +1,6 @@
 """Conflict graph and compliance checking schemas."""
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, Field
@@ -32,7 +32,7 @@ class ConflictCheckResult(BaseModel):
 
     status: ConflictStatus
     brand: str = ""
-    checked_at: datetime = Field(default_factory=datetime.utcnow)
+    checked_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     conflicts: list[ConflictExplanation] = Field(default_factory=list)
     check_type: str = "pre_screen"
 

@@ -1,25 +1,39 @@
-export interface DealTerms {
-  price: number;
+export interface Price {
+  amount: number;
   currency: string;
+}
+
+export interface DealTerms {
+  price: Price;
   content_format: string;
-  usage_rights: string;
+  platforms?: string[];
+  usage_rights_duration_days?: number;
   exclusivity_window_hours?: number;
-  deliverables?: string[];
+  brand_assets?: Record<string, unknown>;
+  compliance_disclosures?: string[];
+}
+
+export interface ConflictExplanation {
+  conflict_type: string;
+  description: string;
+  entities_involved: string[];
+  chain: string;
 }
 
 export interface ConflictResult {
-  has_conflict: boolean;
-  conflict_type?: string;
-  conflicting_brand?: string;
-  reason?: string;
+  status: string;
+  brand: string;
+  conflicts: ConflictExplanation[];
+  check_type: string;
 }
 
 export interface ScoreBreakdown {
-  relevance: number;
-  brand_fit: number;
-  audience_match: number;
-  budget_fit: number;
+  audience_fit: number;
+  brand_alignment: number;
+  price_adequacy: number;
+  projected_roi: number;
   overall: number;
+  reasoning?: string;
 }
 
 export interface DealEvent {
@@ -31,11 +45,21 @@ export interface DealEvent {
   moment_description: string;
   deal_terms?: DealTerms;
   conflict_result?: ConflictResult;
+  conflicts?: ConflictExplanation[];
   reasoning?: string;
   scores?: ScoreBreakdown;
   negotiation_round?: number;
   max_rounds?: number;
+  matched_count?: number;
+  prescreen_results?: PrescreenResult[];
   timestamp: string;
+}
+
+export interface PrescreenResult {
+  agent_id: string;
+  organization: string;
+  status: string;
+  conflicts: ConflictExplanation[];
 }
 
 export interface AgentStatus {
@@ -43,8 +67,8 @@ export interface AgentStatus {
   name: string;
   agent_type: "supply" | "demand";
   organization: string;
-  online: boolean;
-  active_deals: number;
+  status: string;
+  is_active: boolean;
 }
 
 export interface SSEEvent {

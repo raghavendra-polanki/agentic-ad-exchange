@@ -1,6 +1,6 @@
 """Proposal, negotiation, and evaluation schemas."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, Field
@@ -58,7 +58,7 @@ class ProposalRecord(BaseModel):
     scores: ScoreBreakdown | None = None
     reasoning: str = ""
     conflict_result: dict | None = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     round: int = 1
 
 

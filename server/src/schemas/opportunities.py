@@ -1,6 +1,6 @@
 """Opportunity signaling and marketplace schemas."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, Field
@@ -52,7 +52,7 @@ class OpportunityRecord(BaseModel):
     signal: OpportunitySignal
     status: OpportunityStatus = OpportunityStatus.ACTIVE
     matched_demand_agents: list[str] = Field(default_factory=list)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class OpportunityNotification(BaseModel):

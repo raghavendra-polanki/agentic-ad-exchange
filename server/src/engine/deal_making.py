@@ -2,6 +2,10 @@
 
 Orchestrates: opportunity listing -> pre-screen -> matching -> proposals ->
 conflict check -> negotiation -> deal agreed/rejected/expired.
+
+The node functions use the real conflict engine and store.
+The full graph is used for automated testing/demo. Individual node functions
+are also called by the API orchestrator for step-by-step agent-driven flows.
 """
 
 import asyncio
@@ -27,41 +31,50 @@ from src.schemas.proposals import (
 
 
 # ---------------------------------------------------------------------------
-# Placeholder functions — will be wired to real engines / agent callbacks
+# Real engine integrations (lazy imports to avoid circular deps at module load)
 # ---------------------------------------------------------------------------
 
 
+def _get_conflict_checker():
+    from src.conflict import conflict_checker
+    return conflict_checker
+
+
+def _get_store():
+    from src.store import store
+    return store
+
+
 def call_conflict_prescreen(school: str, sport: str, brand: str) -> ConflictCheckResult:
-    """Placeholder -- will be wired to ConflictEngine."""
-    return ConflictCheckResult(status=ConflictStatus.CLEARED, brand=brand)
+    """Run pre-screen via the real conflict engine."""
+    return _get_conflict_checker().pre_screen(school, sport, brand)
 
 
 def call_conflict_final_check(
-    school: str, sport: str, brand: str, athlete_name: str
+    school: str, sport: str, brand: str, athlete_names: list[str],
 ) -> ConflictCheckResult:
-    """Placeholder -- will be wired to ConflictEngine for athlete-level check."""
-    return ConflictCheckResult(
-        status=ConflictStatus.CLEARED,
-        brand=brand,
-        check_type="final",
-    )
+    """Run final check via the real conflict engine (athlete-level)."""
+    return _get_conflict_checker().final_check(school, sport, brand, athlete_names)
 
 
 def get_registered_demand_agents() -> list[dict]:
-    """Placeholder -- returns fake demand agents for Phase 1."""
+    """Get real registered demand agents from the store."""
+    store = _get_store()
+    agents = store.get_demand_agents()
+    if agents:
+        return [
+            {"agent_id": a.agent_id, "organization": a.organization, "brand": a.organization}
+            for a in agents
+        ]
+    # Fallback for automated graph testing when no agents are registered
     return [
         {"agent_id": "nike-agent-001", "organization": "Nike", "brand": "Nike"},
         {"agent_id": "gatorade-agent-001", "organization": "Gatorade", "brand": "Gatorade"},
     ]
 
 
-def notify_agent_webhook(agent_id: str, payload: dict) -> bool:
-    """Placeholder -- will POST to agent callback URL."""
-    return True
-
-
 def simulate_demand_proposal(opportunity: dict, agent_id: str) -> Proposal:
-    """Placeholder -- simulates a demand agent submitting a proposal."""
+    """Simulate a demand agent submitting a proposal (for automated graph runs only)."""
     return Proposal(
         opportunity_id=opportunity.get("opportunity_id", ""),
         demand_agent_id=agent_id,
@@ -70,21 +83,30 @@ def simulate_demand_proposal(opportunity: dict, agent_id: str) -> Proposal:
             content_format="gameday_graphic",
             platforms=["instagram"],
         ),
-        reasoning="Auto-generated proposal for Phase 1 demo.",
+        reasoning="Auto-generated proposal for automated graph run.",
     )
 
 
 def simulate_supply_response(proposal: dict) -> ProposalResponse:
-    """Placeholder -- simulates supply agent accepting the proposal."""
+    """Simulate supply agent accepting (for automated graph runs only)."""
     return ProposalResponse(
         decision=EvaluationDecision.ACCEPT,
-        reasoning="Auto-accepted for Phase 1 demo.",
+        reasoning="Auto-accepted for automated graph run.",
     )
 
 
 # ---------------------------------------------------------------------------
 # Helper: create an audit event dict
 # ---------------------------------------------------------------------------
+
+
+def _fire_and_forget(coro) -> None:
+    """Schedule an async coroutine from sync code if an event loop is running."""
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(coro)
+    except RuntimeError:
+        pass  # No running loop (e.g. in tests) — skip event publishing
 
 
 def _event(deal_id: str, action: str, state: str, detail: str = "") -> dict:
@@ -107,21 +129,9 @@ def list_opportunity(state: DealMakingState) -> dict:
     deal_id = state["deal_id"]
     evt = _event(deal_id, "list_opportunity", DealState.OPPORTUNITY_LISTED)
 
-    # Publish event (fire-and-forget in sync context)
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            payload = {**evt, "new_state": DealState.OPPORTUNITY_LISTED}
-            loop.create_task(
-                event_bus.publish("deal.state_change", payload)
-            )
-        else:
-            payload = {**evt, "new_state": DealState.OPPORTUNITY_LISTED}
-            loop.run_until_complete(
-                event_bus.publish("deal.state_change", payload)
-            )
-    except RuntimeError:
-        pass  # No event loop available (e.g. in tests)
+    _fire_and_forget(
+        event_bus.publish("deal.state_change", {**evt, "new_state": DealState.OPPORTUNITY_LISTED})
+    )
 
     return {
         "state": DealState.OPPORTUNITY_LISTED,
@@ -166,13 +176,9 @@ def pre_screen(state: DealMakingState) -> dict:
 
 
 def notify_demand(state: DealMakingState) -> dict:
-    """Send opportunity to matched demand agents (placeholder logs notification)."""
+    """Send opportunity to matched demand agents."""
     deal_id = state["deal_id"]
     matched = state.get("matched_agents", [])
-    opportunity = state["opportunity"]
-
-    for agent_id in matched:
-        notify_agent_webhook(agent_id, {"opportunity": opportunity})
 
     evt = _event(
         deal_id,
@@ -188,12 +194,11 @@ def notify_demand(state: DealMakingState) -> dict:
 
 
 def receive_proposal(state: DealMakingState) -> dict:
-    """Process incoming proposal from a demand agent."""
+    """Process incoming proposal from a demand agent (simulated for automated runs)."""
     deal_id = state["deal_id"]
     opportunity = state["opportunity"]
     matched = state.get("matched_agents", [])
 
-    # For Phase 1, simulate a proposal from the first matched agent
     if not matched:
         return {
             "state": DealState.DEAL_EXPIRED,
@@ -207,7 +212,7 @@ def receive_proposal(state: DealMakingState) -> dict:
         proposal_id=f"prop-{uuid.uuid4().hex[:8]}",
         opportunity_id=proposal.opportunity_id,
         demand_agent_id=proposal.demand_agent_id,
-        demand_org=agent_id,  # simplified for Phase 1
+        demand_org=agent_id,
         deal_terms=proposal.deal_terms,
         scores=proposal.scores,
         reasoning=proposal.reasoning,
@@ -238,10 +243,10 @@ def final_conflict_check(state: DealMakingState) -> dict:
     subjects = signal.get("subjects", [])
     school = subjects[0]["school"] if subjects else ""
     sport = signal.get("sport", "")
-    athlete = subjects[0]["athlete_name"] if subjects else ""
+    athlete_names = [s["athlete_name"] for s in subjects] if subjects else []
     brand = active.get("demand_org", "")
 
-    result = call_conflict_final_check(school, sport, brand, athlete)
+    result = call_conflict_final_check(school, sport, brand, athlete_names)
 
     if result.status == ConflictStatus.BLOCKED:
         evt = _event(
@@ -250,7 +255,6 @@ def final_conflict_check(state: DealMakingState) -> dict:
             DealState.DEAL_REJECTED,
             f"Conflict blocked: {brand}",
         )
-        # Update active proposal status
         active_updated = {**active, "status": ProposalStatus.CONFLICT_BLOCKED}
         return {
             "state": DealState.DEAL_REJECTED,
@@ -309,7 +313,6 @@ def process_response(state: DealMakingState) -> dict:
             "events": [evt],
         }
     else:
-        # Counter
         round_num = state.get("negotiation_round", 1)
         max_rounds = state.get("max_rounds", 3)
         if round_num >= max_rounds:
@@ -353,16 +356,12 @@ def deal_agreed(state: DealMakingState) -> dict:
 
     evt = _event(deal_id, "deal_agreed", DealState.DEAL_AGREED, "Deal finalized.")
 
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            payload = {
-                "deal_id": deal_id,
-                "agreement": agreement.model_dump(mode="json"),
-            }
-            loop.create_task(event_bus.publish("deal.agreed", payload))
-    except RuntimeError:
-        pass
+    _fire_and_forget(
+        event_bus.publish("deal.agreed", {
+            "deal_id": deal_id,
+            "agreement": agreement.model_dump(mode="json"),
+        })
+    )
 
     return {
         "state": DealState.DEAL_AGREED,
@@ -417,7 +416,6 @@ def after_process_response(state: DealMakingState) -> str:
     elif current == DealState.DEAL_REJECTED:
         return "deal_rejected"
     else:
-        # Counter — go back to receive_proposal for next round
         return "receive_proposal"
 
 
@@ -430,7 +428,6 @@ def create_deal_making_graph() -> StateGraph:
     """Build and compile the deal-making LangGraph state machine."""
     graph = StateGraph(DealMakingState)
 
-    # Add nodes
     graph.add_node("list_opportunity", list_opportunity)
     graph.add_node("pre_screen", pre_screen)
     graph.add_node("notify_demand", notify_demand)
@@ -442,16 +439,13 @@ def create_deal_making_graph() -> StateGraph:
     graph.add_node("deal_rejected", deal_rejected)
     graph.add_node("deal_expired", deal_expired)
 
-    # Set entry
     graph.set_entry_point("list_opportunity")
 
-    # Linear edges
     graph.add_edge("list_opportunity", "pre_screen")
     graph.add_edge("notify_demand", "receive_proposal")
     graph.add_edge("receive_proposal", "final_conflict_check")
     graph.add_edge("forward_to_supply", "process_response")
 
-    # Conditional edges
     graph.add_conditional_edges("pre_screen", after_pre_screen, {
         "notify_demand": "notify_demand",
         "deal_expired": "deal_expired",
@@ -466,7 +460,6 @@ def create_deal_making_graph() -> StateGraph:
         "receive_proposal": "receive_proposal",
     })
 
-    # Terminal edges
     graph.add_edge("deal_agreed", END)
     graph.add_edge("deal_rejected", END)
     graph.add_edge("deal_expired", END)

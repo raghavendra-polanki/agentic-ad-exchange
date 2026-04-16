@@ -1,6 +1,6 @@
 """Deal terms, state machines, and fulfillment schemas."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, Field
@@ -86,7 +86,7 @@ class ContentSubmission(BaseModel):
     content_url: str
     format: ContentFormat
     metadata: dict[str, str] = Field(default_factory=dict)
-    submitted_at: datetime = Field(default_factory=datetime.utcnow)
+    submitted_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class ValidationResult(BaseModel):
@@ -110,7 +110,7 @@ class DealAgreement(BaseModel):
     final_terms: DealTerms
     supply_org: str = ""
     demand_org: str = ""
-    agreed_at: datetime = Field(default_factory=datetime.utcnow)
+    agreed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class DealSummary(BaseModel):
@@ -123,7 +123,7 @@ class DealSummary(BaseModel):
     state: DealState | FulfillmentState
     deal_terms: DealTerms | None = None
     moment_description: str = ""
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     negotiation_round: int = 0
     max_rounds: int = 3

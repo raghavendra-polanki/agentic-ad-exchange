@@ -169,7 +169,7 @@ async def main():
         print(f"📊 Opportunity result: {result}")
 
     except httpx.ConnectError:
-        print("⚠️  Cannot connect to AAX exchange at localhost:8080.")
+        print("⚠️  Cannot connect to AAX exchange at localhost:8000.")
         print(
             "   Start the server first: cd server && uv run uvicorn src.main:app --reload"
         )

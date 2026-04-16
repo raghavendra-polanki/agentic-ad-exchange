@@ -61,6 +61,15 @@ def simulate_demand_approval(deal_id: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
+def _fire_and_forget(coro) -> None:
+    """Schedule an async coroutine from sync code if an event loop is running."""
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(coro)
+    except RuntimeError:
+        pass  # No running loop (e.g. in tests) — skip event publishing
+
+
 def _event(deal_id: str, action: str, state: str, detail: str = "") -> dict:
     return {
         "deal_id": deal_id,
@@ -93,17 +102,12 @@ def generate_brief(state: FulfillmentState) -> dict:
 
     evt = _event(deal_id, "generate_brief", FulfillmentStateEnum.BRIEF_GENERATED, "Brief compiled.")
 
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            loop.create_task(
-                event_bus.publish(
-                    "fulfillment.state_change",
-                    {**evt, "new_state": FulfillmentStateEnum.BRIEF_GENERATED},
-                )
-            )
-    except RuntimeError:
-        pass
+    _fire_and_forget(
+        event_bus.publish(
+            "fulfillment.state_change",
+            {**evt, "new_state": FulfillmentStateEnum.BRIEF_GENERATED},
+        )
+    )
 
     return {
         "state": FulfillmentStateEnum.BRIEF_GENERATED,
@@ -218,14 +222,9 @@ def complete(state: FulfillmentState) -> dict:
 
     evt = _event(deal_id, "complete", FulfillmentStateEnum.COMPLETED, "Fulfillment complete.")
 
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            loop.create_task(
-                event_bus.publish("fulfillment.completed", {"deal_id": deal_id})
-            )
-    except RuntimeError:
-        pass
+    _fire_and_forget(
+        event_bus.publish("fulfillment.completed", {"deal_id": deal_id})
+    )
 
     return {
         "state": FulfillmentStateEnum.COMPLETED,

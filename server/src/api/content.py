@@ -2,8 +2,9 @@
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from src.api.deps import get_current_agent
 from src.api.stream import sse_bus
 from src.schemas.deals import ContentSubmission, FulfillmentState, ValidationResult
 from src.store import store
@@ -11,24 +12,12 @@ from src.store import store
 router = APIRouter()
 
 
-def _get_agent_from_token(authorization: str | None):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing or invalid authorization")
-    api_key = authorization.replace("Bearer ", "")
-    agent = store.get_agent_by_key(api_key)
-    if not agent:
-        raise HTTPException(status_code=401, detail="Invalid API key")
-    return agent
-
-
 @router.post("/{deal_id}")
 async def submit_content(
     deal_id: str,
     submission: ContentSubmission,
-    authorization: str | None = Header(None),
+    agent=Depends(get_current_agent),
 ):
-    """Supply agent submits generated content for validation."""
-    agent = _get_agent_from_token(authorization)
 
     deal = store.deals.get(deal_id)
     if not deal:

@@ -1,6 +1,6 @@
 import asyncio
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter
 from sse_starlette.sse import EventSourceResponse
@@ -29,7 +29,7 @@ class SSEBus:
         event = {
             "event": event_type,
             "data": data,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
         if event_type.startswith("deal"):
             self._deal_history.append(event)

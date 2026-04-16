@@ -1,22 +1,13 @@
 """Agent registration and profile API routes."""
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from src.api.deps import get_current_agent
 from src.api.stream import sse_bus
 from src.schemas.agents import AgentCredentials, RegisterAgentRequest, UpdateAgentRequest
 from src.store import store
 
 router = APIRouter()
-
-
-def _get_agent_from_token(authorization: str | None):
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing or invalid authorization")
-    api_key = authorization.replace("Bearer ", "")
-    agent = store.get_agent_by_key(api_key)
-    if not agent:
-        raise HTTPException(status_code=401, detail="Invalid API key")
-    return agent
 
 
 @router.post("/register")
@@ -37,22 +28,22 @@ async def register_agent(req: RegisterAgentRequest) -> AgentCredentials:
 
 
 @router.get("/me")
-async def get_agent_profile(authorization: str | None = Header(None)):
-    """Get the authenticated agent's profile."""
-    agent = _get_agent_from_token(authorization)
+async def get_agent_profile(agent=Depends(get_current_agent)):
     return agent.model_dump(mode="json")
 
 
 @router.patch("/me")
 async def update_agent_profile(
     req: UpdateAgentRequest,
-    authorization: str | None = Header(None),
+    agent=Depends(get_current_agent),
 ):
-    """Update agent profile (callback URL, standing queries, etc.)."""
-    agent = _get_agent_from_token(authorization)
 
+    updates = {}
     if req.callback_url is not None:
-        object.__setattr__(agent, "callback_url", str(req.callback_url))
+        updates["callback_url"] = str(req.callback_url)
+    if updates:
+        updated = agent.model_copy(update=updates)
+        store.agents[agent.agent_id] = updated
 
     return {"status": "updated", "agent_id": agent.agent_id}
 

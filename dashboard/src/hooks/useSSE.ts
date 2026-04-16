@@ -7,7 +7,7 @@ export function useSSE(endpoint: string) {
   const eventSourceRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
-    const url = `http://localhost:8080/api/v1/stream/${endpoint}`;
+    const url = `${import.meta.env.VITE_API_BASE || "http://localhost:8080/api/v1"}/stream/${endpoint}`;
     const es = new EventSource(url);
     eventSourceRef.current = es;
 
