@@ -1,0 +1,21 @@
+agent:
+  name: "Pixology Supply Agent"
+  type: supply
+  organization: "Pixology"
+  description: "College athletics content creator — gameday graphics, social posts, highlight reels"
+
+capabilities:
+  content_types:
+    - gameday_graphic
+    - social_post
+    - highlight_reel
+  sports:
+    - basketball
+    - football
+  turnaround: minutes
+  max_concurrent_deals: 5
+
+# Pixology API connection (via MCP or direct HTTP)
+pixology:
+  api_url: "${PIXOLOGY_API_URL}"
+  api_key: "${PIXOLOGY_API_KEY}"

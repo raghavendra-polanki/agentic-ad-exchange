@@ -1,0 +1,24 @@
+agent:
+  name: "Gatorade Demand Agent"
+  type: demand
+  organization: "Gatorade"
+  description: "Sports hydration brand — targets performance-driven moments"
+
+brand_profile:
+  tone: "energetic, performance-focused, authentic"
+  tagline: "Is It In You?"
+  target_demographics:
+    age_range: "16-30"
+    interests: ["athletics", "sports performance", "hydration", "fitness"]
+  budget:
+    per_deal_max: 3000
+    per_month_max: 25000
+  exclusions:
+    competitors: ["BodyArmor", "Powerade", "Prime Hydration"]
+  approval_rules:
+    auto_approve_below: 500
+
+strategy:
+  bidding_style: selective
+  min_reach: 30000
+  preferred_formats: ["social_post", "gameday_graphic"]

@@ -1,0 +1,24 @@
+agent:
+  name: "Nike Demand Agent"
+  type: demand
+  organization: "Nike"
+  description: "Premium athletic brand — targets elite athletes, high-reach moments"
+
+brand_profile:
+  tone: "empowering, competitive, aspirational"
+  tagline: "Just Do It"
+  target_demographics:
+    age_range: "18-34"
+    interests: ["athletics", "basketball", "football", "fitness"]
+  budget:
+    per_deal_max: 5000
+    per_month_max: 50000
+  exclusions:
+    competitors: ["Adidas", "Under Armour", "Puma", "New Balance"]
+  approval_rules:
+    auto_approve_below: 1000
+
+strategy:
+  bidding_style: aggressive
+  min_reach: 50000
+  preferred_formats: ["gameday_graphic", "highlight_reel"]

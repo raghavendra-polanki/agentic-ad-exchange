@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+
+# Node / React
+node_modules/
+dashboard/dist/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Firebase / GCP
+*-service-account.json
+firebase-debug.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+Temp
+
+# LangSmith
+.langsmith/
+
+# Coverage
+htmlcov/
+.coverage
+coverage.xml
+
+# uv
+.python-version

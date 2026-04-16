@@ -1,0 +1,25 @@
+agent:
+  name: "Campus Pizza Demand Agent"
+  type: demand
+  organization: "Campus Pizza"
+  description: "Local business near MIT campus — targets local student audience"
+
+brand_profile:
+  tone: "casual, fun, community-driven"
+  tagline: "Fuel Your Game Day"
+  target_demographics:
+    age_range: "18-24"
+    interests: ["college life", "food", "local events"]
+    geo: "Cambridge, MA"
+  budget:
+    per_deal_max: 200
+    per_month_max: 1000
+  exclusions:
+    competitors: ["Dominos", "Papa Johns"]
+  approval_rules:
+    auto_approve_below: 100
+
+strategy:
+  bidding_style: conservative
+  min_reach: 5000
+  preferred_formats: ["social_post"]

@@ -1,0 +1,40 @@
+{
+  "schools": [
+    { "id": "mit", "name": "MIT", "conference": "NEWMAC" },
+    { "id": "duke", "name": "Duke University", "conference": "ACC" },
+    { "id": "unc", "name": "University of North Carolina", "conference": "ACC" }
+  ],
+  "athletes": [
+    { "id": "jane-doe-a1b2", "name": "Jane Doe", "school_id": "mit", "sport": "basketball" },
+    { "id": "john-smith-c3d4", "name": "John Smith", "school_id": "duke", "sport": "basketball" },
+    { "id": "sarah-jones-e5f6", "name": "Sarah Jones", "school_id": "unc", "sport": "basketball" }
+  ],
+  "brands": [
+    { "id": "nike", "name": "Nike", "category": "apparel" },
+    { "id": "adidas", "name": "Adidas", "category": "apparel" },
+    { "id": "gatorade", "name": "Gatorade", "category": "sports_drink" },
+    { "id": "bodyarmor", "name": "BodyArmor", "category": "sports_drink" },
+    { "id": "beats", "name": "Beats Audio", "category": "audio" },
+    { "id": "campus-pizza", "name": "Campus Pizza", "category": "food_local" }
+  ],
+  "conflicts": {
+    "institutional_sponsors": [
+      { "school_id": "mit", "brand_id": "nike", "category": "apparel", "start": "2024-01-01", "end": "2028-12-31" },
+      { "school_id": "duke", "brand_id": "nike", "category": "apparel", "start": "2023-01-01", "end": "2029-12-31" },
+      { "school_id": "unc", "brand_id": "adidas", "category": "apparel", "start": "2024-01-01", "end": "2030-12-31" }
+    ],
+    "athlete_nil_deals": [
+      { "athlete_id": "jane-doe-a1b2", "brand_id": "bodyarmor", "type": "endorsement", "start": "2025-06-01", "end": "2026-12-31" },
+      { "athlete_id": "john-smith-c3d4", "brand_id": "beats", "type": "endorsement", "start": "2025-09-01", "end": "2026-08-31" }
+    ],
+    "brand_competitors": [
+      { "brand_a": "nike", "brand_b": "adidas" },
+      { "brand_a": "nike", "brand_b": "under_armour" },
+      { "brand_a": "nike", "brand_b": "puma" },
+      { "brand_a": "gatorade", "brand_b": "bodyarmor" },
+      { "brand_a": "gatorade", "brand_b": "powerade" },
+      { "brand_a": "beats", "brand_b": "bose" },
+      { "brand_a": "beats", "brand_b": "sony_audio" }
+    ]
+  }
+}
