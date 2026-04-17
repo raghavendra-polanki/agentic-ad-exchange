@@ -14,7 +14,7 @@ logger = logging.getLogger("nike-agent")
 logging.basicConfig(level=logging.INFO, format="%(name)s | %(message)s")
 
 EXCHANGE_URL = os.getenv("AAX_EXCHANGE_URL", "http://localhost:8080")
-ORG_KEY = os.getenv("AAX_ORG_KEY", "")
+ORG_KEY = os.getenv("AAX_ORG_KEY", "aax_org_nike_12345")
 AGENT_PORT = int(os.getenv("AGENT_PORT", "8082"))
 
 # Agent state

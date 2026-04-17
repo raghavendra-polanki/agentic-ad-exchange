@@ -14,7 +14,7 @@ logger = logging.getLogger("pixology-agent")
 logging.basicConfig(level=logging.INFO, format="%(name)s | %(message)s")
 
 EXCHANGE_URL = os.getenv("AAX_EXCHANGE_URL", "http://localhost:8080")
-ORG_KEY = os.getenv("AAX_ORG_KEY", "")
+ORG_KEY = os.getenv("AAX_ORG_KEY", "aax_org_pixology_12345")
 AGENT_PORT = int(os.getenv("AGENT_PORT", "8081"))
 
 # Agent state
@@ -67,7 +67,7 @@ async def signal_test_opportunity(client: httpx.AsyncClient):
     """Signal a test opportunity to the exchange."""
     logger.info("Signaling test opportunity: Jane Doe 1000th career point...")
     resp = await client.post(
-        f"{EXCHANGE_URL}/api/v1/opportunities",
+        f"{EXCHANGE_URL}/api/v1/opportunities/",
         headers={"Authorization": f"Bearer {credentials.get('api_key', '')}"},
         json={
             "content_description": "Jane Doe scores 1000th career point — MIT Women's Basketball milestone moment",

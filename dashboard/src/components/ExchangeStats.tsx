@@ -14,19 +14,21 @@ export default function ExchangeStats() {
   useEffect(() => {
     async function fetchStats() {
       try {
-        const [statsRes, orgsRes] = await Promise.all([
+        const [statsRes, orgsRes, agentsRes] = await Promise.all([
           fetch(`${API_BASE}/api/v1/deals/stats`).catch(() => null),
           fetch(`${API_BASE}/api/v1/orgs/`).catch(() => null),
+          fetch(`${API_BASE}/api/v1/agents`).catch(() => null),
         ]);
 
         const statsData = statsRes?.ok ? await statsRes.json() : {};
         const orgsData = orgsRes?.ok ? await orgsRes.json() : [];
+        const agentsData = agentsRes?.ok ? await agentsRes.json() : [];
 
         setStats({
           total_deals: statsData.total_deals ?? 0,
-          active_agents: statsData.active_agents ?? 0,
-          deals_today: statsData.deals_today ?? 0,
-          total_orgs: Array.isArray(orgsData) ? orgsData.length : (orgsData.total_orgs ?? 0),
+          active_agents: Array.isArray(agentsData) ? agentsData.length : 0,
+          deals_today: statsData.completed_deals ?? 0,
+          total_orgs: Array.isArray(orgsData) ? orgsData.length : 0,
         });
       } catch {
         // Server not running — keep defaults

@@ -16,8 +16,19 @@ export default function AgentPanel({ fullPage = false }: AgentPanelProps) {
       try {
         const res = await fetch(`${API_BASE}/api/v1/agents/`);
         if (res.ok) {
-          const data = await res.json();
-          setAgents(Array.isArray(data) ? data : data.agents ?? []);
+          const raw = await res.json();
+          const list = Array.isArray(raw) ? raw : raw.agents ?? [];
+          // Map server fields to AgentInfo
+          setAgents(list.map((a: Record<string, unknown>) => ({
+            agent_id: a.agent_id || '',
+            org_id: a.org_id || '',
+            org_name: (a.organization as string) || (a.name as string) || '',
+            name: (a.name as string) || '',
+            agent_type: (a.agent_type as string) || 'demand',
+            description: '',
+            is_active: a.is_active ?? true,
+            last_seen: a.last_seen as string | undefined,
+          })));
         }
       } catch {
         // Server not running
@@ -25,7 +36,7 @@ export default function AgentPanel({ fullPage = false }: AgentPanelProps) {
     }
 
     fetchAgents();
-    const interval = setInterval(fetchAgents, 15000);
+    const interval = setInterval(fetchAgents, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -34,27 +45,37 @@ export default function AgentPanel({ fullPage = false }: AgentPanelProps) {
     let es: EventSource | null = null;
     try {
       es = new EventSource(`${API_BASE}/api/v1/stream/agents`);
-      es.onmessage = (event) => {
+
+      const handleAgent = (event: MessageEvent) => {
         try {
           const data = JSON.parse(event.data);
-          if (data.type === 'agent_update' && data.agent) {
-            setAgents((prev) => {
-              const idx = prev.findIndex((a) => a.agent_id === data.agent.agent_id);
-              if (idx >= 0) {
-                const updated = [...prev];
-                updated[idx] = data.agent;
-                return updated;
-              }
-              return [...prev, data.agent];
-            });
-          }
+          const agent: AgentInfo = {
+            agent_id: data.agent_id || '',
+            org_id: data.org_id || '',
+            org_name: data.organization || data.name || '',
+            name: data.name || '',
+            agent_type: data.agent_type || 'demand',
+            description: '',
+            is_active: data.is_active ?? true,
+            last_seen: data.last_seen,
+          };
+          if (!agent.agent_id) return;
+          setAgents((prev) => {
+            const idx = prev.findIndex((a) => a.agent_id === agent.agent_id);
+            if (idx >= 0) {
+              const updated = [...prev];
+              updated[idx] = agent;
+              return updated;
+            }
+            return [...prev, agent];
+          });
         } catch {
           // ignore parse errors
         }
       };
-      es.onerror = () => {
-        es?.close();
-      };
+
+      es.addEventListener('agent_status', handleAgent);
+      es.onerror = () => { es?.close(); };
     } catch {
       // SSE not available
     }

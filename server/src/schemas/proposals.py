@@ -39,8 +39,8 @@ class ScoreBreakdown(BaseModel):
 class Proposal(BaseModel):
     """Demand agent submits a proposal for an opportunity."""
 
-    opportunity_id: str
-    demand_agent_id: str = ""
+    opportunity_id: str = ""  # filled from URL path if not provided
+    demand_agent_id: str = ""  # filled from auth token
     deal_terms: DealTerms
     reasoning: str = ""
     scores: ScoreBreakdown | None = None

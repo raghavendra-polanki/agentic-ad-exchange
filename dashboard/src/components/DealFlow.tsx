@@ -1,18 +1,37 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { DealInfo } from '../types';
 
 const API_BASE = 'http://localhost:8080';
 
 export default function DealFlow() {
+  const navigate = useNavigate();
   const [deals, setDeals] = useState<DealInfo[]>([]);
 
   useEffect(() => {
     async function fetchDeals() {
       try {
-        const res = await fetch(`${API_BASE}/api/v1/deals/`);
+        const res = await fetch(`${API_BASE}/api/v1/deals`);
         if (res.ok) {
-          const data = await res.json();
-          setDeals(Array.isArray(data) ? data : data.deals ?? []);
+          const raw = await res.json();
+          const list = Array.isArray(raw) ? raw : raw.deals ?? [];
+          setDeals(list.map((d: Record<string, unknown>) => {
+            const terms = d.deal_terms as Record<string, unknown> | undefined;
+            const price = terms?.price as Record<string, unknown> | undefined;
+            return {
+              deal_id: (d.deal_id as string) || '',
+              supply_agent_id: '',
+              demand_agent_id: '',
+              supply_org_name: (d.supply_org as string) || '',
+              demand_org_name: (d.demand_org as string) || '',
+              status: (d.state as string) || 'proposed',
+              proposed_price: price ? (price.amount as number) || 0 : 0,
+              final_price: d.state === 'deal_agreed' && price ? (price.amount as number) : undefined,
+              content_type: (d.moment_description as string) || '',
+              created_at: (d.created_at as string) || new Date().toISOString(),
+              updated_at: (d.updated_at as string) || new Date().toISOString(),
+            } as DealInfo;
+          }));
         }
       } catch {
         // Server not running
@@ -20,7 +39,7 @@ export default function DealFlow() {
     }
 
     fetchDeals();
-    const interval = setInterval(fetchDeals, 10000);
+    const interval = setInterval(fetchDeals, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -29,27 +48,54 @@ export default function DealFlow() {
     let es: EventSource | null = null;
     try {
       es = new EventSource(`${API_BASE}/api/v1/stream/deals`);
-      es.onmessage = (event) => {
+
+      // Map SSE event data to DealInfo shape
+      function sseToDeaInfo(data: Record<string, unknown>): DealInfo {
+        const price = data.deal_terms
+          ? (data.deal_terms as Record<string, unknown>).price as Record<string, unknown> | undefined
+          : undefined;
+        return {
+          deal_id: (data.deal_id as string) || '',
+          supply_agent_id: '',
+          demand_agent_id: '',
+          supply_org_name: (data.supply_org as string) || '',
+          demand_org_name: (data.demand_org as string) || '',
+          status: ((data.state as string) || 'proposed') as DealInfo['status'],
+          proposed_price: price ? (price.amount as number) || 0 : 0,
+          final_price: undefined,
+          content_type: data.moment_description as string | undefined,
+          created_at: (data.timestamp as string) || new Date().toISOString(),
+          updated_at: (data.timestamp as string) || new Date().toISOString(),
+        };
+      }
+
+      const handleEvent = (event: MessageEvent) => {
         try {
           const data = JSON.parse(event.data);
-          if (data.type === 'deal_update' && data.deal) {
-            setDeals((prev) => {
-              const idx = prev.findIndex((d) => d.deal_id === data.deal.deal_id);
-              if (idx >= 0) {
-                const updated = [...prev];
-                updated[idx] = data.deal;
-                return updated;
-              }
-              return [data.deal, ...prev];
-            });
-          }
+          const deal = sseToDeaInfo(data);
+          if (!deal.deal_id) return;
+          setDeals((prev) => {
+            const idx = prev.findIndex((d) => d.deal_id === deal.deal_id);
+            if (idx >= 0) {
+              const updated = [...prev];
+              updated[idx] = { ...updated[idx], ...deal };
+              return updated;
+            }
+            return [deal, ...prev];
+          });
         } catch {
           // ignore parse errors
         }
       };
-      es.onerror = () => {
-        es?.close();
-      };
+
+      // Listen to all deal event types from the SSE bus
+      const eventTypes = [
+        'deal_created', 'deal_update', 'deal_agreed',
+        'deal_rejected', 'deal_expired', 'conflict_blocked',
+        'proposals_ranked',
+      ];
+      eventTypes.forEach((t) => es!.addEventListener(t, handleEvent));
+      es.onerror = () => { es?.close(); };
     } catch {
       // SSE not available
     }
@@ -96,7 +142,7 @@ export default function DealFlow() {
       ) : (
         <div>
           {deals.map((deal) => (
-            <div key={deal.deal_id} className="deal-item">
+            <div key={deal.deal_id} className="deal-item clickable" onClick={() => navigate(`/deals/${deal.deal_id}`)}>
               <div className="deal-parties">
                 <div className="deal-parties-names">
                   {deal.supply_org_name} <span>&harr;</span> {deal.demand_org_name}
@@ -107,10 +153,10 @@ export default function DealFlow() {
                 </div>
               </div>
               <span className={`badge ${statusBadgeClass(deal.status)}`}>
-                {deal.status.replace('_', ' ')}
+                {(deal.status || 'unknown').replace('_', ' ')}
               </span>
               <span className="deal-price">
-                ${(deal.final_price ?? deal.proposed_price).toLocaleString()}
+                ${(deal.final_price ?? deal.proposed_price ?? 0).toLocaleString()}
               </span>
             </div>
           ))}

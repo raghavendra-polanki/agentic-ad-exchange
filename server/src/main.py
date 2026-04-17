@@ -12,9 +12,19 @@ from src.conflict import init_conflict_engine
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: load conflict graph seed data
+    # Startup: load conflict graph seed data + seed orgs
     init_conflict_engine()
-    print("AAX Exchange started — conflict engine loaded")
+
+    # Seed default orgs with fixed keys for easy testing
+    from src.schemas.orgs import RegisterOrgRequest
+    from src.store import store
+    for org_name in ["Pixology", "Nike"]:
+        creds = store.register_org(
+            RegisterOrgRequest(name=org_name),
+            protocol_base_url="http://localhost:8080",
+        )
+        print(f"  Seeded org: {org_name} → key={creds.org_key}")
+    print("AAX Exchange started — conflict engine loaded, 2 orgs seeded")
 
     # Bridge engine EventBus → SSE bus so LangGraph events reach dashboard
     async def _bridge_events():

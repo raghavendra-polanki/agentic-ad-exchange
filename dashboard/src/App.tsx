@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
 import Agents from './pages/Agents';
 import Onboarding from './pages/Onboarding';
+import DealDetail from './pages/DealDetail';
 import './App.css';
 
 function App() {
@@ -60,6 +61,7 @@ function App() {
       <main className="main-content">
         <Routes>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/deals/:dealId" element={<DealDetail />} />
           <Route path="/agents" element={<Agents />} />
           <Route path="/onboard" element={<Onboarding />} />
         </Routes>

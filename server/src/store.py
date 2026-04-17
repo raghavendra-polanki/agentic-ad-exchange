@@ -48,7 +48,8 @@ class ExchangeStore:
         self, req: RegisterOrgRequest, protocol_base_url: str,
     ) -> OrgCredentials:
         org_id = f"org_{uuid.uuid4().hex[:12]}"
-        org_key = OrgProfile.generate_org_key()
+        # Fixed org keys for easy testing (e.g. aax_org_12345)
+        org_key = f"aax_org_{req.name.lower().replace(' ', '_')}_12345"
 
         profile = OrgProfile(
             org_id=org_id,
