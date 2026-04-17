@@ -1,9 +1,11 @@
-"""Nike Demand Agent — brand sponsorship for college athletics."""
+"""Gatorade Demand Agent — sports hydration sponsorship for college athletics.
 
-import asyncio
+Demonstrates conflict blocking: the exchange will reject proposals when an
+athlete already has a competing NIL deal (e.g. BodyArmor).
+"""
+
 import hashlib
 import hmac
-import json
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -11,67 +13,69 @@ from contextlib import asynccontextmanager
 import httpx
 from fastapi import FastAPI, Header, Request
 
-logger = logging.getLogger("nike-agent")
+logger = logging.getLogger("gatorade-agent")
 logging.basicConfig(level=logging.INFO, format="%(name)s | %(message)s")
 
 EXCHANGE_URL = os.getenv("AAX_EXCHANGE_URL", "http://localhost:8080")
-ORG_KEY = os.getenv("AAX_ORG_KEY", "aax_org_nike_12345")
-AGENT_PORT = int(os.getenv("AGENT_PORT", "8082"))
-
-# ── LLM Setup ──
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-USE_LLM = bool(ANTHROPIC_API_KEY)
-if USE_LLM:
-    from anthropic import Anthropic
-    llm_client = Anthropic(api_key=ANTHROPIC_API_KEY)
-
-NIKE_SYSTEM_PROMPT = """You are the Nike Basketball Agent — representing Nike's sponsorship of college athletics.
-Brand values: Bold, empowering, aspirational. Tagline: "Just Do It"
-Budget: up to $5,000 per deal, $50,000/month
-Competitors to avoid: Adidas, Under Armour, New Balance
-
-When evaluating a content opportunity, consider:
-- Does the athlete/moment align with Nike's brand narrative?
-- Is the audience reach worth the investment?
-- Is this a milestone or trending moment with storytelling potential?
-- Does the sport match Nike's focus (basketball, football)?
-
-Respond with ONLY a JSON object (no other text):
-{"should_bid": true, "price": 3000, "reasoning": "detailed reasoning here", "scores": {"audience_fit": 80, "brand_alignment": 85, "price_adequacy": 75, "projected_roi": 70, "overall": 78}}"""
-
-
-async def evaluate_with_claude(user_message: str) -> dict | None:
-    """Call Claude for evaluation. Returns parsed JSON or None on failure."""
-    if not USE_LLM:
-        return None
-    try:
-        response = llm_client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=1024,
-            system=NIKE_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_message}],
-        )
-        text = response.content[0].text
-        if "{" in text:
-            json_str = text[text.index("{"):text.rindex("}") + 1]
-            return json.loads(json_str)
-    except Exception as e:
-        logger.warning("Claude call failed: %s, using fallback", e)
-    return None
+ORG_KEY = os.getenv("AAX_ORG_KEY", "aax_org_gatorade_12345")
+AGENT_PORT = int(os.getenv("AGENT_PORT", "8083"))
 
 # Agent state
 credentials = {}
 
-# Nike brand config
-BUDGET_PER_DEAL = 5000
+# Gatorade brand config
+BUDGET_PER_DEAL = 3000
 BRAND_PROFILE = {
-    "tone": "Bold, empowering, aspirational",
-    "tagline": "Just Do It",
-    "target_demographics": {"age_range": "18-35", "interests": ["sports", "athletics"]},
+    "tone": "energetic, performance-focused, authentic",
+    "tagline": "Is It In You?",
+    "target_demographics": {"age_range": "18-30", "interests": ["sports", "fitness", "hydration"]},
     "budget_per_deal_max": BUDGET_PER_DEAL,
-    "budget_per_month_max": 50000,
-    "competitor_exclusions": ["Adidas", "Under Armour", "New Balance"],
+    "budget_per_month_max": 25000,
+    "competitor_exclusions": ["BodyArmor", "Powerade", "Prime Hydration"],
 }
+
+# Claude reasoning support
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+SYSTEM_PROMPT = (
+    "You are the Gatorade Sports Agent — representing Gatorade's sponsorship of college athletics.\n"
+    'Brand: "Is It In You?" — energetic, performance-focused, authentic.\n'
+    "Budget: up to $3,000 per deal.\n"
+    "Competitors: BodyArmor, Powerade, Prime Hydration — NEVER sponsor alongside these.\n"
+    "Focus: performance-driven moments — records, comebacks, peak athletic achievement."
+)
+
+
+async def get_llm_reasoning(signal: dict, score: int, price: float) -> str | None:
+    """Ask Claude for reasoning on the opportunity, if API key is set."""
+    if not ANTHROPIC_API_KEY:
+        return None
+    try:
+        import anthropic
+
+        client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+        resp = await client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=300,
+            system=SYSTEM_PROMPT,
+            messages=[
+                {
+                    "role": "user",
+                    "content": (
+                        f"Evaluate this sponsorship opportunity for Gatorade.\n"
+                        f"Sport: {signal.get('sport', 'unknown')}\n"
+                        f"Description: {signal.get('content_description', 'N/A')}\n"
+                        f"Reach: {signal.get('audience', {}).get('projected_reach', 0):,}\n"
+                        f"Trending: {signal.get('audience', {}).get('trending_score', 0)}\n"
+                        f"Our score: {score}/100, proposed price: ${price:.0f}\n\n"
+                        f"Give a 2-sentence take on whether this fits Gatorade's brand."
+                    ),
+                }
+            ],
+        )
+        return resp.content[0].text
+    except Exception as e:
+        logger.warning("LLM reasoning failed: %s", e)
+        return None
 
 
 async def onboard():
@@ -88,14 +92,14 @@ async def onboard():
             headers={"Authorization": f"Bearer {ORG_KEY}"},
             json={
                 "agent_type": "demand",
-                "name": "Nike Basketball Agent",
-                "organization": "Nike",
-                "description": "Seeking premium basketball content moments for Nike sponsorship",
+                "name": "Gatorade Sports Agent",
+                "organization": "Gatorade",
+                "description": "Seeking performance-driven college athletics content for Gatorade sponsorship",
                 "callback_url": f"http://localhost:{AGENT_PORT}/webhook",
                 "brand_profile": BRAND_PROFILE,
                 "standing_queries": [
-                    {"sport": "basketball", "min_reach": 10000},
-                    {"sport": "football", "min_reach": 50000},
+                    {"sport": "basketball", "min_reach": 30000},
+                    {"sport": "football", "min_reach": 30000},
                 ],
             },
         )
@@ -111,13 +115,12 @@ async def onboard():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("LLM mode: %s", "ON" if USE_LLM else "OFF (hardcoded fallback)")
     await onboard()
     yield
-    logger.info("Nike agent shutting down")
+    logger.info("Gatorade agent shutting down")
 
 
-app = FastAPI(title="Nike Demand Agent", lifespan=lifespan)
+app = FastAPI(title="Gatorade Demand Agent", lifespan=lifespan)
 
 
 def verify_signature(body: bytes, signature: str | None) -> bool:
@@ -128,70 +131,54 @@ def verify_signature(body: bytes, signature: str | None) -> bool:
     return hmac.compare_digest(f"sha256={expected}", signature)
 
 
-async def evaluate_opportunity(signal: dict) -> tuple[bool, float, str, dict | None]:
-    """Evaluate an opportunity. Returns (should_bid, price, reasoning, scores)."""
-    # Try Claude first
-    if USE_LLM:
-        subjects = signal.get("subjects", [])
-        athlete = subjects[0].get("athlete_name", "Unknown") if subjects else "Unknown"
-        school = subjects[0].get("school", "") if subjects else ""
-        user_msg = (
-            f"Evaluate this content opportunity:\n"
-            f"- Athlete: {athlete} ({school})\n"
-            f"- Sport: {signal.get('sport', 'unknown')}\n"
-            f"- Moment: {signal.get('content_description', '')}\n"
-            f"- Audience reach: {signal.get('audience', {}).get('projected_reach', 0):,}\n"
-            f"- Trending score: {signal.get('audience', {}).get('trending_score', 0)}\n"
-            f"- Min price: ${signal.get('min_price', 0)}\n"
-            f"- Available formats: {signal.get('available_formats', [])}\n"
-            f"\nShould Nike bid? If yes, at what price?"
-        )
-        result = await evaluate_with_claude(user_msg)
-        if result:
-            should_bid = result.get("should_bid", False)
-            price = min(BUDGET_PER_DEAL, result.get("price", 0))
-            reasoning = result.get("reasoning", "")
-            scores = result.get("scores")
-            logger.info("Claude evaluation: bid=%s, $%s", should_bid, price)
-            return should_bid, price, reasoning, scores
-
-    # Fallback: hardcoded scoring
-    description = signal.get("content_description", "")
+def evaluate_opportunity(signal: dict) -> tuple[bool, float, str]:
+    """Evaluate an opportunity. Returns (should_bid, price, reasoning)."""
     audience = signal.get("audience", {})
     reach = audience.get("projected_reach", 0)
     sport = signal.get("sport", "")
+    description = signal.get("content_description", "").lower()
+    trending = audience.get("trending_score", 0)
 
     score = 0
     reasons = []
 
+    # Sport match — basketball and football are Gatorade's focus
     if sport in ("basketball", "football"):
         score += 30
-        reasons.append(f"{sport} matches Nike's focus")
+        reasons.append(f"{sport} matches Gatorade's focus")
     else:
-        score += 10
-        reasons.append(f"{sport} is secondary for Nike")
+        score += 5
+        reasons.append(f"{sport} is not a Gatorade priority sport")
 
+    # Reach
     if reach >= 100000:
         score += 30
-        reasons.append(f"Strong reach ({reach:,})")
+        reasons.append(f"Excellent reach ({reach:,})")
     elif reach >= 50000:
         score += 20
         reasons.append(f"Good reach ({reach:,})")
-    elif reach >= 10000:
+    elif reach >= 30000:
         score += 10
         reasons.append(f"Moderate reach ({reach:,})")
 
-    if "milestone" in description.lower() or "record" in description.lower() or "1000" in description:
-        score += 20
-        reasons.append("Milestone narrative — strong storytelling potential")
-
-    trending = audience.get("trending_score", 0)
+    # Trending
     if trending >= 7:
         score += 20
         reasons.append(f"High trending score ({trending})")
+    elif trending >= 4:
+        score += 10
+        reasons.append(f"Moderate trending ({trending})")
 
-    should_bid = score >= 40
-    price = min(BUDGET_PER_DEAL, max(500, int(BUDGET_PER_DEAL * score / 100)))
+    # Performance keywords
+    performance_keywords = ["record", "comeback", "clutch", "MVP", "championship", "victory", "winning"]
+    matched_keywords = [kw for kw in performance_keywords if kw.lower() in description]
+    if matched_keywords:
+        score += 20
+        reasons.append(f"Performance keywords: {', '.join(matched_keywords)}")
+
+    # Decision
+    should_bid = score >= 50
+    price = min(BUDGET_PER_DEAL, max(300, int(BUDGET_PER_DEAL * score / 100)))
 
     reasoning = f"Score: {score}/100. " + " | ".join(reasons)
     if should_bid:
@@ -199,15 +186,7 @@ async def evaluate_opportunity(signal: dict) -> tuple[bool, float, str, dict | N
     else:
         reasoning += " → Passing (below threshold)"
 
-    scores_dict = {
-        "audience_fit": min(100, int(reach / 2000)),
-        "brand_alignment": 85 if sport in ("basketball", "football") else 50,
-        "price_adequacy": 75,
-        "projected_roi": min(100, int(trending * 10)) if trending else 50,
-        "overall": score,
-    }
-
-    return should_bid, price, reasoning, scores_dict
+    return should_bid, price, reasoning
 
 
 @app.post("/webhook")
@@ -230,9 +209,23 @@ async def receive_webhook(
     elif x_aax_event == "counter.received":
         return await handle_counter(payload)
     elif x_aax_event == "deal.agreed":
-        logger.info("Deal agreed! deal_id=%s with %s",
-                     payload.get("deal_id"), payload.get("supply_org"))
+        logger.info(
+            "Deal agreed! deal_id=%s with %s",
+            payload.get("deal_id"),
+            payload.get("supply_org"),
+        )
         return {"status": "acknowledged"}
+    elif x_aax_event == "proposal.conflict_blocked":
+        logger.warning(
+            "CONFLICT BLOCKED: Proposal %s was rejected due to conflict: %s",
+            payload.get("proposal_id"),
+            payload.get("reason", "competitor exclusion"),
+        )
+        logger.warning(
+            "Conflicting entity: %s — Gatorade cannot sponsor alongside competitors",
+            payload.get("conflicting_entity", "unknown"),
+        )
+        return {"status": "acknowledged_conflict"}
     else:
         logger.info("Unhandled event: %s", x_aax_event)
         return {"status": "received"}
@@ -246,15 +239,21 @@ async def handle_opportunity(payload: dict):
 
     logger.info(
         "Evaluating opportunity %s from %s: %s",
-        opportunity_id, supply_org,
+        opportunity_id,
+        supply_org,
         signal.get("content_description", "")[:80],
     )
 
-    should_bid, price, reasoning, scores = await evaluate_opportunity(signal)
+    should_bid, price, reasoning = evaluate_opportunity(signal)
+
+    # Optionally enhance reasoning with Claude
+    llm_reasoning = await get_llm_reasoning(signal, int(price / BUDGET_PER_DEAL * 100), price)
+    if llm_reasoning:
+        reasoning += f" | Claude: {llm_reasoning}"
+
     logger.info("Evaluation: %s", reasoning)
 
     if not should_bid:
-        # Pass on this opportunity
         async with httpx.AsyncClient() as client:
             await client.post(
                 f"{EXCHANGE_URL}/api/v1/opportunities/{opportunity_id}/pass",
@@ -272,15 +271,15 @@ async def handle_opportunity(payload: dict):
                     "price": {"amount": price, "currency": "USD"},
                     "content_format": "gameday_graphic",
                     "platforms": ["instagram", "twitter"],
-                    "usage_rights_duration_days": 30,
+                    "usage_rights_duration_days": 14,
                 },
                 "reasoning": reasoning,
-                "scores": scores or {
-                    "audience_fit": 80,
-                    "brand_alignment": 85,
-                    "price_adequacy": 75,
-                    "projected_roi": 70,
-                    "overall": 78,
+                "scores": {
+                    "audience_fit": 75,
+                    "brand_alignment": 80,
+                    "price_adequacy": 70,
+                    "projected_roi": 65,
+                    "overall": 72,
                 },
             },
         )
@@ -288,6 +287,11 @@ async def handle_opportunity(payload: dict):
         if resp.status_code == 200:
             data = resp.json()
             logger.info("Proposal submitted: %s", data)
+            if data.get("status") == "conflict_blocked":
+                logger.warning(
+                    "CONFLICT BLOCKED at submission: %s",
+                    data.get("reason", "competitor exclusion detected"),
+                )
         else:
             logger.error("Proposal failed: %s %s", resp.status_code, resp.text)
 
@@ -327,6 +331,7 @@ async def handle_counter(payload: dict):
 async def health():
     return {
         "status": "ok",
+        "agent": "Gatorade",
         "agent_id": credentials.get("agent_id"),
         "registered": bool(credentials.get("agent_id")),
     }
@@ -334,4 +339,5 @@ async def health():
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=AGENT_PORT)

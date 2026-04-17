@@ -3,6 +3,7 @@
 import asyncio
 import hashlib
 import hmac
+import json
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -16,6 +17,48 @@ logging.basicConfig(level=logging.INFO, format="%(name)s | %(message)s")
 EXCHANGE_URL = os.getenv("AAX_EXCHANGE_URL", "http://localhost:8080")
 ORG_KEY = os.getenv("AAX_ORG_KEY", "aax_org_pixology_12345")
 AGENT_PORT = int(os.getenv("AGENT_PORT", "8081"))
+
+# ── LLM Setup ──
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+USE_LLM = bool(ANTHROPIC_API_KEY)
+if USE_LLM:
+    from anthropic import Anthropic
+    llm_client = Anthropic(api_key=ANTHROPIC_API_KEY)
+
+PIXOLOGY_SYSTEM_PROMPT = """You are the Pixology Content Agent — a premium content creation service for college athletics.
+You create gameday graphics, social posts, and highlight reels for athletes.
+Your minimum acceptable price is $500.
+
+When evaluating a brand's proposal to sponsor your content, consider:
+- Is the price fair for the content quality and athlete's reach?
+- Does the brand align with college athletics values?
+- Are the usage rights reasonable (shorter is better for you)?
+- Is the brand reputable and a good partner for your athletes?
+
+Respond with ONLY a JSON object (no other text):
+{"decision": "accept", "reasoning": "detailed reasoning here", "counter_price": null}
+For counter: {"decision": "counter", "reasoning": "why countering", "counter_price": 750}
+For reject: {"decision": "reject", "reasoning": "why rejecting", "counter_price": null}"""
+
+
+async def evaluate_with_claude(user_message: str) -> dict | None:
+    """Call Claude for evaluation. Returns parsed JSON or None on failure."""
+    if not USE_LLM:
+        return None
+    try:
+        response = llm_client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=1024,
+            system=PIXOLOGY_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_message}],
+        )
+        text = response.content[0].text
+        if "{" in text:
+            json_str = text[text.index("{"):text.rindex("}") + 1]
+            return json.loads(json_str)
+    except Exception as e:
+        logger.warning("Claude call failed: %s, using fallback", e)
+    return None
 
 # Agent state
 credentials: dict = {}
@@ -98,6 +141,7 @@ async def signal_test_opportunity(client: httpx.AsyncClient):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    logger.info("LLM mode: %s", "ON" if USE_LLM else "OFF (hardcoded fallback)")
     await onboard()
     yield
     logger.info("Pixology agent shutting down")
@@ -155,22 +199,47 @@ async def handle_proposal(payload: dict):
         proposal_id,
     )
 
-    # Simple evaluation: accept if price >= minimum
-    if price >= MIN_ACCEPTABLE_PRICE:
-        decision = "accept"
-        reasoning = (
-            f"Price ${price:.0f} meets our minimum of ${MIN_ACCEPTABLE_PRICE}. "
-            f"{demand_org} is a good brand partner. Accepting."
+    # Try Claude first
+    decision = None
+    reasoning = ""
+    counter_price = None
+
+    if USE_LLM:
+        user_msg = (
+            f"Evaluate this proposal:\n"
+            f"- Brand: {demand_org}\n"
+            f"- Price offered: ${price:.0f}\n"
+            f"- Content format: {deal_terms.get('content_format', 'unknown')}\n"
+            f"- Platforms: {deal_terms.get('platforms', [])}\n"
+            f"- Usage rights: {deal_terms.get('usage_rights_duration_days', 'N/A')} days\n"
+            f"- Your minimum price: ${MIN_ACCEPTABLE_PRICE}\n"
+            f"\nShould we accept, counter, or reject?"
         )
-    elif price >= MIN_ACCEPTABLE_PRICE * 0.7:
-        decision = "counter"
-        reasoning = (
-            f"Price ${price:.0f} is below our minimum of ${MIN_ACCEPTABLE_PRICE} "
-            f"but close enough to counter."
-        )
-    else:
-        decision = "reject"
-        reasoning = f"Price ${price:.0f} is too far below our minimum of ${MIN_ACCEPTABLE_PRICE}."
+        result = await evaluate_with_claude(user_msg)
+        if result:
+            decision = result.get("decision", "reject")
+            reasoning = result.get("reasoning", "")
+            counter_price = result.get("counter_price")
+            logger.info("Claude evaluation: %s", decision)
+
+    # Fallback: price-based logic
+    if decision is None:
+        if price >= MIN_ACCEPTABLE_PRICE:
+            decision = "accept"
+            reasoning = (
+                f"Price ${price:.0f} meets our minimum of ${MIN_ACCEPTABLE_PRICE}. "
+                f"{demand_org} is a good brand partner. Accepting."
+            )
+        elif price >= MIN_ACCEPTABLE_PRICE * 0.7:
+            decision = "counter"
+            reasoning = (
+                f"Price ${price:.0f} is below our minimum of ${MIN_ACCEPTABLE_PRICE} "
+                f"but close enough to counter."
+            )
+            counter_price = MIN_ACCEPTABLE_PRICE
+        else:
+            decision = "reject"
+            reasoning = f"Price ${price:.0f} is too far below our minimum of ${MIN_ACCEPTABLE_PRICE}."
 
     logger.info("Decision: %s — %s", decision, reasoning)
 
@@ -182,7 +251,7 @@ async def handle_proposal(payload: dict):
         }
         if decision == "counter":
             response_body["counter_terms"] = {
-                "price": {"amount": MIN_ACCEPTABLE_PRICE, "currency": "USD"},
+                "price": {"amount": counter_price or MIN_ACCEPTABLE_PRICE, "currency": "USD"},
                 "content_format": deal_terms.get("content_format", "gameday_graphic"),
                 "usage_rights_duration_days": 14,
             }
