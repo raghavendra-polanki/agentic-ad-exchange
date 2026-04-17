@@ -4,12 +4,14 @@ The API routes call these functions instead of reimplementing deal logic inline.
 Each function uses the real conflict engine and store, then publishes SSE events.
 """
 
+import asyncio
 import uuid
 from datetime import UTC, datetime
 
 from src.api.stream import sse_bus
 from src.conflict import conflict_checker
 from src.engine.timeout import timeout_manager
+from src.engine.webhook import deliver_webhook
 from src.schemas.agents import DemandAgentProfile, SupplyAgentProfile
 from src.schemas.deals import DealAgreement, DealState, DealSummary
 from src.schemas.opportunities import OpportunitySignal
@@ -108,6 +110,46 @@ async def handle_signal_opportunity(
         "timestamp": datetime.now(UTC).isoformat(),
     })
 
+    # Deliver opportunity.matched webhooks to matched demand agents
+    for da_id in matched:
+        da = store.get_agent(da_id)
+        org_id = store.agent_org.get(da_id)
+        org = store.get_org(org_id) if org_id else None
+        asyncio.create_task(deliver_webhook(da_id, "opportunity.matched", {
+            "opportunity_id": opp.opportunity_id,
+            "deal_id": deal_id,
+            "signal": signal.model_dump(mode="json"),
+            "supply_org": agent.organization,
+            "next_actions": [
+                {
+                    "action": "propose",
+                    "endpoint": (
+                        f"POST /api/v1/opportunities"
+                        f"/{opp.opportunity_id}/propose"
+                    ),
+                    "description": "Submit a proposal for this opportunity",
+                },
+                {
+                    "action": "pass",
+                    "endpoint": (
+                        f"POST /api/v1/opportunities"
+                        f"/{opp.opportunity_id}/pass"
+                    ),
+                    "description": "Decline this opportunity",
+                },
+            ],
+            "constraints": {
+                "response_timeout_seconds": DEFAULT_DEAL_TIMEOUT,
+                "budget_per_deal": (
+                    org.budget_per_deal_max if org else 5000
+                ),
+                "budget_monthly_remaining": (
+                    org.budget_monthly_max - org.budget_monthly_spent
+                    if org else 50000
+                ),
+            },
+        }))
+
     return {
         "opportunity_id": opp.opportunity_id,
         "deal_id": deal_id,
@@ -196,6 +238,53 @@ async def handle_submit_proposal(
                 "reasoning": proposal.reasoning,
                 "timestamp": datetime.now(UTC).isoformat(),
             })
+
+            # Deliver proposal.received webhook to supply agent
+            asyncio.create_task(deliver_webhook(
+                opp.supply_agent_id,
+                "proposal.received",
+                {
+                    "deal_id": deal.deal_id,
+                    "proposal_id": prop.proposal_id,
+                    "opportunity_id": opportunity_id,
+                    "demand_org": agent.organization,
+                    "deal_terms": proposal.deal_terms.model_dump(
+                        mode="json",
+                    ),
+                    "reasoning": proposal.reasoning,
+                    "scores": (
+                        proposal.scores.model_dump(mode="json")
+                        if proposal.scores else None
+                    ),
+                    "next_actions": [
+                        {
+                            "action": "accept",
+                            "endpoint": (
+                                f"POST /api/v1/proposals"
+                                f"/{prop.proposal_id}/respond"
+                            ),
+                        },
+                        {
+                            "action": "counter",
+                            "endpoint": (
+                                f"POST /api/v1/proposals"
+                                f"/{prop.proposal_id}/respond"
+                            ),
+                        },
+                        {
+                            "action": "reject",
+                            "endpoint": (
+                                f"POST /api/v1/proposals"
+                                f"/{prop.proposal_id}/respond"
+                            ),
+                        },
+                    ],
+                    "constraints": {
+                        "round": prop.round,
+                        "max_rounds": 3,
+                    },
+                },
+            ))
             break
 
     return {
@@ -268,6 +357,27 @@ async def handle_respond_to_proposal(
                 "timestamp": datetime.now(UTC).isoformat(),
             })
 
+            # Deliver deal.agreed webhook to both agents
+            agreed_payload = {
+                "deal_id": deal.deal_id,
+                "event": "deal.agreed",
+                "final_terms": prop.deal_terms.model_dump(mode="json"),
+                "supply_org": deal.supply_org,
+                "demand_org": prop.demand_org,
+            }
+            opp = store.opportunities.get(prop.opportunity_id)
+            if opp:
+                asyncio.create_task(
+                    deliver_webhook(
+                        opp.supply_agent_id, "deal.agreed", agreed_payload,
+                    ),
+                )
+            asyncio.create_task(
+                deliver_webhook(
+                    prop.demand_agent_id, "deal.agreed", agreed_payload,
+                ),
+            )
+
         return {
             "status": "accepted",
             "deal_id": deal.deal_id if deal else None,
@@ -330,6 +440,31 @@ async def handle_respond_to_proposal(
                 "reasoning": response.reasoning,
                 "timestamp": datetime.now(UTC).isoformat(),
             })
+
+            # Deliver counter.received webhook to the other party
+            counter_recipient = prop.demand_agent_id
+            asyncio.create_task(deliver_webhook(
+                counter_recipient,
+                "counter.received",
+                {
+                    "deal_id": deal.deal_id,
+                    "proposal_id": proposal_id,
+                    "counter_terms": (
+                        response.counter_terms.model_dump(mode="json")
+                        if response.counter_terms else None
+                    ),
+                    "reasoning": response.reasoning,
+                    "constraints": {
+                        "round": new_round,
+                        "max_rounds": 3,
+                    },
+                    "next_actions": [
+                        {"action": "accept"},
+                        {"action": "counter"},
+                        {"action": "reject"},
+                    ],
+                },
+            ))
 
         counter = (
             response.counter_terms.model_dump(mode="json")

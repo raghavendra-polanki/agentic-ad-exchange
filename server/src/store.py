@@ -30,6 +30,7 @@ class ExchangeStore:
         self.api_keys: dict[str, str] = {}  # api_key -> agent_id
         self.agent_org: dict[str, str] = {}  # agent_id -> org_id
         self.agent_last_seen: dict[str, datetime] = {}  # agent_id -> timestamp
+        self.webhook_secrets: dict[str, str] = {}  # agent_id -> webhook_secret
 
         # Notifications (polling fallback for agents without webhooks)
         self.pending_notifications: dict[str, list[dict]] = {}  # agent_id -> queue
@@ -131,6 +132,7 @@ class ExchangeStore:
         self.api_keys[api_key] = agent_id
         self.agent_last_seen[agent_id] = datetime.now(UTC)
         self.pending_notifications[agent_id] = []
+        self.webhook_secrets[agent_id] = webhook_secret
 
         if org_id:
             self.agent_org[agent_id] = org_id

@@ -18,6 +18,7 @@ def clean_store():
     store.agent_org.clear()
     store.agent_last_seen.clear()
     store.pending_notifications.clear()
+    store.webhook_secrets.clear()
     yield
 
 
