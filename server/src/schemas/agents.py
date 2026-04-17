@@ -76,6 +76,7 @@ class AgentCredentials(BaseModel):
 
     agent_id: str
     api_key: str
+    webhook_secret: str = ""
     status: str = "registered"
     registered_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 

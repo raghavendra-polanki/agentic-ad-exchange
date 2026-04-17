@@ -38,6 +38,7 @@ from src.schemas.opportunities import (
     OpportunityStatus,
     SubjectInfo,
 )
+from src.schemas.orgs import OrgCredentials, OrgProfile, RegisterOrgRequest
 from src.schemas.proposals import (
     CounterOffer,
     EvaluationDecision,
@@ -81,6 +82,9 @@ __all__ = [
     "OpportunitySignal",
     "OpportunityStatus",
     "SubjectInfo",
+    "OrgCredentials",
+    "OrgProfile",
+    "RegisterOrgRequest",
     "CounterOffer",
     "EvaluationDecision",
     "Proposal",
