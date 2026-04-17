@@ -18,8 +18,17 @@ EXCHANGE_URL = os.getenv("AAX_EXCHANGE_URL", "http://localhost:8080")
 ORG_KEY = os.getenv("AAX_ORG_KEY", "aax_org_nike_12345")
 AGENT_PORT = int(os.getenv("AGENT_PORT", "8082"))
 
+# ── Load .env from project root ──
+from pathlib import Path
+_env_file = Path(__file__).resolve().parent.parent.parent / "server" / ".env"
+if _env_file.exists():
+    for line in _env_file.read_text().splitlines():
+        if "=" in line and not line.startswith("#"):
+            k, v = line.split("=", 1)
+            os.environ.setdefault(k.strip(), v.strip())
+
 # ── LLM Setup ──
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY") or os.getenv("AAX_ANTHROPIC_API_KEY") or ""
 USE_LLM = bool(ANTHROPIC_API_KEY)
 if USE_LLM:
     from anthropic import Anthropic
@@ -46,7 +55,7 @@ async def evaluate_with_claude(user_message: str) -> dict | None:
         return None
     try:
         response = llm_client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=1024,
             system=NIKE_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_message}],
@@ -226,9 +235,12 @@ async def receive_webhook(
     logger.info("Webhook received: %s", x_aax_event)
 
     if x_aax_event == "opportunity.matched":
-        return await handle_opportunity(payload)
+        # Respond immediately, process in background (avoids webhook timeout)
+        asyncio.create_task(handle_opportunity(payload))
+        return {"status": "processing"}
     elif x_aax_event == "counter.received":
-        return await handle_counter(payload)
+        asyncio.create_task(handle_counter(payload))
+        return {"status": "processing"}
     elif x_aax_event == "deal.agreed":
         logger.info("Deal agreed! deal_id=%s with %s",
                      payload.get("deal_id"), payload.get("supply_org"))

@@ -4,6 +4,7 @@ Demonstrates conservative bidding: only targets affordable, local opportunities
 with small reach requirements. Skips expensive national-level deals.
 """
 
+import asyncio
 import hashlib
 import hmac
 import logging
@@ -34,8 +35,17 @@ BRAND_PROFILE = {
     "competitor_exclusions": ["Dominos", "Papa Johns"],
 }
 
+# ── Load .env from project root ──
+from pathlib import Path
+_env_file = Path(__file__).resolve().parent.parent.parent / "server" / ".env"
+if _env_file.exists():
+    for line in _env_file.read_text().splitlines():
+        if "=" in line and not line.startswith("#"):
+            k, v = line.split("=", 1)
+            os.environ.setdefault(k.strip(), v.strip())
+
 # Claude reasoning support
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY") or os.getenv("AAX_ANTHROPIC_API_KEY") or ""
 SYSTEM_PROMPT = (
     "You are Campus Pizza's ad agent — a small pizza shop near MIT campus.\n"
     "Budget: VERY limited, max $200 per deal.\n"
@@ -54,7 +64,7 @@ async def get_llm_reasoning(signal: dict, score: int, price: float) -> str | Non
 
         client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
         resp = await client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4-6",
             max_tokens=300,
             system=SYSTEM_PROMPT,
             messages=[
@@ -210,9 +220,11 @@ async def receive_webhook(
     logger.info("Webhook received: %s", x_aax_event)
 
     if x_aax_event == "opportunity.matched":
-        return await handle_opportunity(payload)
+        asyncio.create_task(handle_opportunity(payload))
+        return {"status": "processing"}
     elif x_aax_event == "counter.received":
-        return await handle_counter(payload)
+        asyncio.create_task(handle_counter(payload))
+        return {"status": "processing"}
     elif x_aax_event == "deal.agreed":
         logger.info(
             "Deal agreed! deal_id=%s with %s",
