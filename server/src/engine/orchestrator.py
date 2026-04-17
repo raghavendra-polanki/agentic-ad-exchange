@@ -110,6 +110,17 @@ async def handle_signal_opportunity(
         "timestamp": datetime.now(UTC).isoformat(),
     })
 
+    # Record deal event for audit trail
+    store.add_deal_event(deal_id, {
+        "type": "opportunity_listed",
+        "actor": agent.organization,
+        "actor_type": "supply",
+        "description": signal.content_description,
+        "matched_count": len(matched),
+        "prescreen_results": prescreen_results,
+        "timestamp": datetime.now(UTC).isoformat(),
+    })
+
     # Deliver opportunity.matched webhooks to matched demand agents
     for da_id in matched:
         da = store.get_agent(da_id)
@@ -197,6 +208,21 @@ async def handle_submit_proposal(
             "timestamp": datetime.now(UTC).isoformat(),
         })
 
+        # Record conflict event on any deal for this opportunity
+        for d in store.deals.values():
+            if d.opportunity_id == opportunity_id:
+                store.add_deal_event(d.deal_id, {
+                    "type": "conflict_blocked",
+                    "actor": agent.organization,
+                    "actor_type": "demand",
+                    "conflicts": [
+                        c.model_dump(mode="json")
+                        for c in conflict_result.conflicts
+                    ],
+                    "timestamp": datetime.now(UTC).isoformat(),
+                })
+                break
+
         return {
             "proposal_id": None,
             "status": "conflict_blocked",
@@ -236,6 +262,21 @@ async def handle_submit_proposal(
                     if proposal.scores else None
                 ),
                 "reasoning": proposal.reasoning,
+                "timestamp": datetime.now(UTC).isoformat(),
+            })
+
+            # Record deal event
+            store.add_deal_event(deal.deal_id, {
+                "type": "proposal_submitted",
+                "actor": agent.organization,
+                "actor_type": "demand",
+                "proposal_id": prop.proposal_id,
+                "price": proposal.deal_terms.price.amount,
+                "reasoning": proposal.reasoning,
+                "scores": (
+                    proposal.scores.model_dump(mode="json")
+                    if proposal.scores else None
+                ),
                 "timestamp": datetime.now(UTC).isoformat(),
             })
 
@@ -357,6 +398,16 @@ async def handle_respond_to_proposal(
                 "timestamp": datetime.now(UTC).isoformat(),
             })
 
+            store.add_deal_event(deal.deal_id, {
+                "type": "proposal_accepted",
+                "actor": agent.organization,
+                "actor_type": (
+                    "supply" if hasattr(agent, "capabilities") else "demand"
+                ),
+                "reasoning": response.reasoning,
+                "timestamp": datetime.now(UTC).isoformat(),
+            })
+
             # Deliver deal.agreed webhook to both agents
             agreed_payload = {
                 "deal_id": deal.deal_id,
@@ -403,6 +454,16 @@ async def handle_respond_to_proposal(
                 "timestamp": datetime.now(UTC).isoformat(),
             })
 
+            store.add_deal_event(deal.deal_id, {
+                "type": "proposal_rejected",
+                "actor": agent.organization,
+                "actor_type": (
+                    "supply" if hasattr(agent, "capabilities") else "demand"
+                ),
+                "reasoning": response.reasoning,
+                "timestamp": datetime.now(UTC).isoformat(),
+            })
+
         return {"status": "rejected", "reasoning": response.reasoning}
 
     else:  # COUNTER
@@ -433,6 +494,21 @@ async def handle_respond_to_proposal(
                 "deal_id": deal.deal_id,
                 "state": DealState.NEGOTIATING,
                 "negotiation_round": new_round,
+                "counter_terms": (
+                    response.counter_terms.model_dump(mode="json")
+                    if response.counter_terms else None
+                ),
+                "reasoning": response.reasoning,
+                "timestamp": datetime.now(UTC).isoformat(),
+            })
+
+            store.add_deal_event(deal.deal_id, {
+                "type": "counter_offer",
+                "actor": agent.organization,
+                "actor_type": (
+                    "supply" if hasattr(agent, "capabilities") else "demand"
+                ),
+                "round": new_round,
                 "counter_terms": (
                     response.counter_terms.model_dump(mode="json")
                     if response.counter_terms else None
