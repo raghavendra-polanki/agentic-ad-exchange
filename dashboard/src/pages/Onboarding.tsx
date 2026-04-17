@@ -3,8 +3,22 @@ import type { OrgCredentials } from '../types';
 
 const API_BASE = 'http://localhost:8080';
 
-const CONTENT_FORMATS = ['image', 'video', 'story', 'reel', 'carousel', 'graphic'];
-const SPORTS = ['football', 'basketball', 'baseball', 'soccer', 'volleyball', 'track', 'swimming', 'tennis', 'golf'];
+const CONTENT_FORMATS = [
+  { value: 'gameday_graphic', label: 'Gameday Graphic' },
+  { value: 'highlight_reel', label: 'Highlight Reel' },
+  { value: 'social_post', label: 'Social Post' },
+  { value: 'story', label: 'Story' },
+  { value: 'video_clip', label: 'Video Clip' },
+];
+const SPORTS = [
+  { value: 'basketball', label: 'Basketball' },
+  { value: 'football', label: 'Football' },
+  { value: 'soccer', label: 'Soccer' },
+  { value: 'baseball', label: 'Baseball' },
+  { value: 'track', label: 'Track' },
+  { value: 'swimming', label: 'Swimming' },
+  { value: 'other', label: 'Other' },
+];
 
 export default function Onboarding() {
   // Org form state
@@ -57,7 +71,11 @@ export default function Onboarding() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: 'Request failed' }));
-        throw new Error(err.detail || `HTTP ${res.status}`);
+        const detail = err.detail;
+        const msg = Array.isArray(detail)
+          ? detail.map((d: { msg?: string }) => d.msg || JSON.stringify(d)).join('; ')
+          : detail || `HTTP ${res.status}`;
+        throw new Error(msg);
       }
 
       const data: OrgCredentials = await res.json();
@@ -109,7 +127,11 @@ export default function Onboarding() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: 'Request failed' }));
-        throw new Error(err.detail || `HTTP ${res.status}`);
+        const detail = err.detail;
+        const msg = Array.isArray(detail)
+          ? detail.map((d: { msg?: string }) => d.msg || JSON.stringify(d)).join('; ')
+          : detail || `HTTP ${res.status}`;
+        throw new Error(msg);
       }
 
       const data = await res.json();
@@ -364,13 +386,13 @@ export default function Onboarding() {
                       <label className="form-label">Content Formats</label>
                       <div className="checkbox-group">
                         {CONTENT_FORMATS.map((fmt) => (
-                          <label key={fmt} className="checkbox-label">
+                          <label key={fmt.value} className="checkbox-label">
                             <input
                               type="checkbox"
-                              checked={contentFormats.includes(fmt)}
-                              onChange={() => toggleArrayItem(contentFormats, fmt, setContentFormats)}
+                              checked={contentFormats.includes(fmt.value)}
+                              onChange={() => toggleArrayItem(contentFormats, fmt.value, setContentFormats)}
                             />
-                            {fmt}
+                            {fmt.label}
                           </label>
                         ))}
                       </div>
@@ -379,13 +401,13 @@ export default function Onboarding() {
                       <label className="form-label">Sports</label>
                       <div className="checkbox-group">
                         {SPORTS.map((sport) => (
-                          <label key={sport} className="checkbox-label">
+                          <label key={sport.value} className="checkbox-label">
                             <input
                               type="checkbox"
-                              checked={sports.includes(sport)}
-                              onChange={() => toggleArrayItem(sports, sport, setSports)}
+                              checked={sports.includes(sport.value)}
+                              onChange={() => toggleArrayItem(sports, sport.value, setSports)}
                             />
-                            {sport}
+                            {sport.label}
                           </label>
                         ))}
                       </div>

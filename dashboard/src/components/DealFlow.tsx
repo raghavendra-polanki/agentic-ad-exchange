@@ -28,7 +28,7 @@ export default function DealFlow() {
   useEffect(() => {
     let es: EventSource | null = null;
     try {
-      es = new EventSource(`${API_BASE}/api/v1/stream/events`);
+      es = new EventSource(`${API_BASE}/api/v1/stream/deals`);
       es.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);

@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AAX — Single Slide</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    background: #0f1117;
+    color: #e2e8f0;
+    position: relative;
+  }
+
+  /* Background texture */
+  body::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse at 15% 20%, rgba(99, 102, 241, 0.07) 0%, transparent 50%),
+      radial-gradient(ellipse at 85% 80%, rgba(16, 185, 129, 0.05) 0%, transparent 50%);
+    pointer-events: none;
+  }
+
+  .slide {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    padding: 44px 60px 36px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ─── TOP BAR ─── */
+  .top-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .logo {
+    width: 44px; height: 44px;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    font-weight: 900;
+    color: white;
+  }
+
+  .brand h1 {
+    font-size: 26px;
+    font-weight: 800;
+    color: #f1f5f9;
+    letter-spacing: -0.5px;
+  }
+
+  .brand .sub {
+    font-size: 11px;
+    color: #6366f1;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+  }
+
+  .top-right {
+    text-align: right;
+    font-size: 11px;
+    color: #475569;
+    line-height: 1.6;
+  }
+  .top-right .name { color: #94a3b8; font-weight: 600; }
+
+  /* ─── HEADLINE ─── */
+  .headline {
+    text-align: center;
+    margin-bottom: 28px;
+  }
+
+  .headline h2 {
+    font-size: 28px;
+    font-weight: 800;
+    color: #f1f5f9;
+    letter-spacing: -0.5px;
+    line-height: 1.3;
+  }
+
+  .headline h2 .hl { color: #818cf8; }
+  .headline h2 .hl-green { color: #34d399; }
+
+  .headline .subhead {
+    font-size: 14px;
+    color: #64748b;
+    margin-top: 6px;
+    font-weight: 400;
+  }
+
+  /* ─── 4-COLUMN MAIN ─── */
+  .main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1.5fr 1fr;
+    gap: 24px;
+  }
+
+  /* Section styling */
+  .section {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .section-label {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 2.5px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid;
+  }
+
+  .label-red { color: #f87171; border-color: rgba(248, 113, 113, 0.3); }
+  .label-green { color: #34d399; border-color: rgba(52, 211, 153, 0.3); }
+  .label-purple { color: #a78bfa; border-color: rgba(167, 139, 250, 0.3); }
+  .label-amber { color: #fbbf24; border-color: rgba(251, 191, 36, 0.3); }
+
+  .section-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  /* ─── PROBLEM SECTION ─── */
+  .problem-item {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+
+  .problem-icon {
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+    background: rgba(248, 113, 113, 0.1);
+    border: 1px solid rgba(248, 113, 113, 0.15);
+  }
+
+  .problem-text h4 {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #e2e8f0;
+    margin-bottom: 2px;
+  }
+
+  .problem-text p {
+    font-size: 10.5px;
+    color: #64748b;
+    line-height: 1.5;
+  }
+
+  .stat-callout {
+    background: rgba(248, 113, 113, 0.06);
+    border: 1px solid rgba(248, 113, 113, 0.12);
+    border-radius: 10px;
+    padding: 12px;
+    margin-top: auto;
+  }
+
+  .stat-callout .stat-number {
+    font-size: 24px;
+    font-weight: 800;
+    color: #f87171;
+  }
+
+  .stat-callout .stat-desc {
+    font-size: 10px;
+    color: #94a3b8;
+    margin-top: 2px;
+    line-height: 1.4;
+  }
+
+  /* ─── SOLUTION SECTION ─── */
+  .solution-item {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+
+  .solution-icon {
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+    background: rgba(52, 211, 153, 0.1);
+    border: 1px solid rgba(52, 211, 153, 0.15);
+  }
+
+  .solution-text h4 {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #e2e8f0;
+    margin-bottom: 2px;
+  }
+
+  .solution-text p {
+    font-size: 10.5px;
+    color: #64748b;
+    line-height: 1.5;
+  }
+
+  .speed-compare {
+    background: rgba(52, 211, 153, 0.06);
+    border: 1px solid rgba(52, 211, 153, 0.12);
+    border-radius: 10px;
+    padding: 12px;
+    margin-top: auto;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .speed-old {
+    text-align: center;
+  }
+
+  .speed-old .val { font-size: 18px; font-weight: 800; color: #64748b; text-decoration: line-through; }
+  .speed-old .lbl { font-size: 9px; color: #475569; }
+
+  .speed-arrow { font-size: 18px; color: #34d399; }
+
+  .speed-new {
+    text-align: center;
+  }
+
+  .speed-new .val { font-size: 22px; font-weight: 800; color: #34d399; }
+  .speed-new .lbl { font-size: 9px; color: #6ee7b7; }
+
+  /* ─── ARCHITECTURE SECTION ─── */
+  .arch-diagram {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: 1;
+  }
+
+  /* Agents row */
+  .agents-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .agent-card {
+    border-radius: 8px;
+    padding: 10px 12px;
+    border: 1px solid;
+  }
+
+  .agent-card.supply {
+    background: rgba(16, 185, 129, 0.05);
+    border-color: rgba(16, 185, 129, 0.15);
+  }
+
+  .agent-card.demand {
+    background: rgba(99, 102, 241, 0.05);
+    border-color: rgba(99, 102, 241, 0.15);
+  }
+
+  .agent-card .card-label {
+    font-size: 8px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 4px;
+  }
+
+  .agent-card.supply .card-label { color: #10b981; }
+  .agent-card.demand .card-label { color: #818cf8; }
+
+  .agent-card .card-items {
+    font-size: 9.5px;
+    color: #94a3b8;
+    line-height: 1.6;
+  }
+
+  .agent-card .card-items strong { color: #cbd5e1; }
+
+  /* Arrow between agents and exchange */
+  .arrow-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 2px 0;
+  }
+
+  .arrow-bar .arr-line {
+    height: 1px;
+    flex: 1;
+    background: linear-gradient(90deg, transparent, rgba(99,102,241,0.3), transparent);
+  }
+
+  .arrow-bar .arr-label {
+    font-size: 8px;
+    color: #6366f1;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    white-space: nowrap;
+  }
+
+  /* Exchange core */
+  .exchange-core {
+    background: rgba(99, 102, 241, 0.04);
+    border: 1px solid rgba(99, 102, 241, 0.15);
+    border-radius: 12px;
+    padding: 12px;
+    flex: 1;
+  }
+
+  .exchange-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .exchange-title .ex-icon {
+    width: 22px; height: 22px;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+  }
+
+  .exchange-title h3 {
+    font-size: 13px;
+    font-weight: 700;
+    color: #e2e8f0;
+  }
+
+  .exchange-title .ex-tag {
+    font-size: 8px;
+    color: #818cf8;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-left: auto;
+  }
+
+  .engine-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .engine-item {
+    background: rgba(255,255,255, 0.03);
+    border: 1px solid rgba(255,255,255, 0.05);
+    border-radius: 6px;
+    padding: 8px;
+    text-align: center;
+  }
+
+  .engine-item .ei-icon { font-size: 14px; margin-bottom: 3px; }
+  .engine-item .ei-name { font-size: 9px; font-weight: 600; color: #c4b5fd; }
+  .engine-item .ei-desc { font-size: 8px; color: #475569; margin-top: 2px; line-height: 1.3; }
+
+  /* Deal flow bar */
+  .flow-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 6px 0;
+  }
+
+  .flow-step {
+    font-size: 8px;
+    font-weight: 600;
+    padding: 3px 7px;
+    border-radius: 4px;
+  }
+
+  .flow-step.s1 { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .flow-step.s2 { background: rgba(139,92,246,0.15); color: #a78bfa; }
+  .flow-step.s3 { background: rgba(245,158,11,0.15); color: #fbbf24; }
+  .flow-step.s4 { background: rgba(6,182,212,0.15); color: #22d3ee; }
+  .flow-step.s5 { background: rgba(34,197,94,0.15); color: #4ade80; }
+
+  .flow-arr { color: #334155; font-size: 8px; }
+
+  /* Observation layer */
+  .obs-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 0;
+  }
+
+  .obs-bar .arr-line {
+    height: 1px;
+    flex: 1;
+    background: linear-gradient(90deg, transparent, rgba(251,191,36,0.2), transparent);
+  }
+
+  .obs-bar .arr-label {
+    font-size: 8px;
+    color: #fbbf24;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    white-space: nowrap;
+  }
+
+  .human-bar {
+    background: rgba(251, 191, 36, 0.04);
+    border: 1px solid rgba(251, 191, 36, 0.12);
+    border-radius: 8px;
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+  }
+
+  .human-item {
+    font-size: 9px;
+    color: #94a3b8;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .human-item .hi-icon { font-size: 11px; }
+
+  /* ─── WHY NOW SECTION ─── */
+  .whynow-item {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+
+  .whynow-icon {
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+    background: rgba(251, 191, 36, 0.1);
+    border: 1px solid rgba(251, 191, 36, 0.15);
+  }
+
+  .whynow-text h4 {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #e2e8f0;
+    margin-bottom: 2px;
+  }
+
+  .whynow-text p {
+    font-size: 10.5px;
+    color: #64748b;
+    line-height: 1.5;
+  }
+
+  .domain-box {
+    background: rgba(251, 191, 36, 0.06);
+    border: 1px solid rgba(251, 191, 36, 0.12);
+    border-radius: 10px;
+    padding: 12px;
+    margin-top: auto;
+  }
+
+  .domain-box .domain-label {
+    font-size: 9px;
+    font-weight: 700;
+    color: #fbbf24;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 6px;
+  }
+
+  .domain-box p {
+    font-size: 10.5px;
+    color: #94a3b8;
+    line-height: 1.5;
+  }
+
+  .domain-box strong { color: #cbd5e1; }
+
+  /* ─── FOOTER ─── */
+  .footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 18px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255,255,255, 0.04);
+  }
+
+  .tech-pills {
+    display: flex;
+    gap: 8px;
+  }
+
+  .tech-pill {
+    font-size: 9px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: rgba(255,255,255, 0.03);
+    border: 1px solid rgba(255,255,255, 0.06);
+    color: #64748b;
+    font-weight: 500;
+  }
+
+  .footer-quote {
+    font-size: 11px;
+    color: #818cf8;
+    font-weight: 600;
+    font-style: italic;
+  }
+</style>
+</head>
+<body>
+<div class="slide">
+
+  <!-- TOP BAR -->
+  <div class="top-bar">
+    <div class="brand">
+      <div class="logo">AAX</div>
+      <div>
+        <h1>Agentic Ad Exchange</h1>
+        <div class="sub">Infrastructure for the Moment Market</div>
+      </div>
+    </div>
+    <div class="top-right">
+      <div class="name">Raghavendra Polanki</div>
+      MIT AI Studio &middot; Spring 2026
+    </div>
+  </div>
+
+  <!-- HEADLINE -->
+  <div class="headline">
+    <h2>An open exchange where <span class="hl">autonomous AI agents</span> negotiate branded content deals in <span class="hl-green">real time</span></h2>
+    <div class="subhead">Protocol-first, agent-opaque infrastructure &mdash; any agent that speaks the protocol can participate</div>
+  </div>
+
+  <!-- 4-COLUMN MAIN -->
+  <div class="main">
+
+    <!-- COLUMN 1: PROBLEM -->
+    <div class="section">
+      <div class="section-label label-red">The Problem</div>
+      <div class="section-body">
+        <div class="problem-item">
+          <div class="problem-icon">&#9203;</div>
+          <div class="problem-text">
+            <h4>Moments Die Waiting</h4>
+            <p>A buzzer-beater goes viral. By the time a brand deal is negotiated through emails and agencies, the moment is gone.</p>
+          </div>
+        </div>
+        <div class="problem-item">
+          <div class="problem-icon">&#128176;</div>
+          <div class="problem-text">
+            <h4>Creator Economics Broken</h4>
+            <p>Platforms take 55-70% of ad revenue. Direct deals take weeks. Creators can't capture value from moments they create.</p>
+          </div>
+        </div>
+        <div class="problem-item">
+          <div class="problem-icon">&#9888;</div>
+          <div class="problem-text">
+            <h4>Compliance is Manual</h4>
+            <p>Sponsor exclusivity, athlete NIL contracts, brand conflicts — checked by humans in spreadsheets. Slow, error-prone.</p>
+          </div>
+        </div>
+        <div class="stat-callout">
+          <div class="stat-number">~0%</div>
+          <div class="stat-desc">of viral moments in college sports are monetized through real-time branded content today. 450k+ D1 athletic events/year.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- COLUMN 2: SOLUTION -->
+    <div class="section">
+      <div class="section-label label-green">AAX Solution</div>
+      <div class="section-body">
+        <div class="solution-item">
+          <div class="solution-icon">&#129302;</div>
+          <div class="solution-text">
+            <h4>Fully Autonomous Agents</h4>
+            <p>Brand and creator agents discover, evaluate, bid, negotiate, and close deals — without human-in-the-loop for routine deals.</p>
+          </div>
+        </div>
+        <div class="solution-item">
+          <div class="solution-icon">&#128200;</div>
+          <div class="solution-text">
+            <h4>Multi-Dimensional Matching</h4>
+            <p>Not just price. Audience fit, brand alignment, content feasibility, competitive positioning — all scored and traced.</p>
+          </div>
+        </div>
+        <div class="solution-item">
+          <div class="solution-icon">&#9989;</div>
+          <div class="solution-text">
+            <h4>Automated Compliance</h4>
+            <p>Two-pass conflict engine checks school sponsors, athlete NIL deals, and brand exclusions — before deals even reach agents.</p>
+          </div>
+        </div>
+        <div class="solution-item">
+          <div class="solution-icon">&#128065;</div>
+          <div class="solution-text">
+            <h4>Full Auditability</h4>
+            <p>Every agent decision logged with reasoning, scores, and timestamps. Humans observe, intervene when needed.</p>
+          </div>
+        </div>
+        <div class="speed-compare">
+          <div class="speed-old">
+            <div class="val">2-4 weeks</div>
+            <div class="lbl">Today's deals</div>
+          </div>
+          <div class="speed-arrow">&#10132;</div>
+          <div class="speed-new">
+            <div class="val">&lt; 6 min</div>
+            <div class="lbl">On AAX</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- COLUMN 3: ARCHITECTURE -->
+    <div class="section">
+      <div class="section-label label-purple">Architecture</div>
+      <div class="arch-diagram">
+
+        <!-- Agents -->
+        <div class="agents-row">
+          <div class="agent-card supply">
+            <div class="card-label">Supply Agents (opaque)</div>
+            <div class="card-items">
+              <strong>Pixology</strong> &middot; ESPN &middot; Creators<br>
+              Bring: signal detection, content creation, pricing
+            </div>
+          </div>
+          <div class="agent-card demand">
+            <div class="card-label">Demand Agents (opaque)</div>
+            <div class="card-items">
+              <strong>Nike</strong> &middot; <strong>Gatorade</strong> &middot; Local Biz<br>
+              Bring: eval logic, bidding strategy, brand rules
+            </div>
+          </div>
+        </div>
+
+        <!-- Arrow: Protocol -->
+        <div class="arrow-bar">
+          <div class="arr-line"></div>
+          <div class="arr-label">AAX Protocol &middot; REST + Webhooks + SSE &middot; Hub &amp; Spoke</div>
+          <div class="arr-line"></div>
+        </div>
+
+        <!-- Exchange Core -->
+        <div class="exchange-core">
+          <div class="exchange-title">
+            <div class="ex-icon">&#9889;</div>
+            <h3>AAX Exchange Core</h3>
+            <span class="ex-tag">Neutral Infrastructure</span>
+          </div>
+          <div class="engine-grid">
+            <div class="engine-item">
+              <div class="ei-icon">&#128272;</div>
+              <div class="ei-name">Agent Registry</div>
+              <div class="ei-desc">Identity, auth, discovery</div>
+            </div>
+            <div class="engine-item">
+              <div class="ei-icon">&#128260;</div>
+              <div class="ei-name">Deal Engine</div>
+              <div class="ei-desc">LangGraph state machines</div>
+            </div>
+            <div class="engine-item">
+              <div class="ei-icon">&#9878;</div>
+              <div class="ei-name">Conflict Engine</div>
+              <div class="ei-desc">Two-pass: pre-screen + final</div>
+            </div>
+            <div class="engine-item">
+              <div class="ei-icon">&#127919;</div>
+              <div class="ei-name">Matching</div>
+              <div class="ei-desc">Relevance scoring, queries</div>
+            </div>
+            <div class="engine-item">
+              <div class="ei-icon">&#9989;</div>
+              <div class="ei-name">Content Validator</div>
+              <div class="ei-desc">Vision model brand check</div>
+            </div>
+            <div class="engine-item">
+              <div class="ei-icon">&#128203;</div>
+              <div class="ei-name">Audit Trail</div>
+              <div class="ei-desc">Every decision traced</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Deal Flow -->
+        <div class="flow-bar">
+          <span class="flow-step s1">Signal</span>
+          <span class="flow-arr">&#8594;</span>
+          <span class="flow-step s2">Pre-Screen</span>
+          <span class="flow-arr">&#8594;</span>
+          <span class="flow-step s2">Match</span>
+          <span class="flow-arr">&#8594;</span>
+          <span class="flow-step s3">Bid</span>
+          <span class="flow-arr">&#8594;</span>
+          <span class="flow-step s3">Conflict Check</span>
+          <span class="flow-arr">&#8594;</span>
+          <span class="flow-step s4">Negotiate</span>
+          <span class="flow-arr">&#8594;</span>
+          <span class="flow-step s5">Agree</span>
+          <span class="flow-arr">&#8594;</span>
+          <span class="flow-step s5">Content Live</span>
+        </div>
+
+        <!-- Observation -->
+        <div class="obs-bar">
+          <div class="arr-line"></div>
+          <div class="arr-label">Human Observation Layer</div>
+          <div class="arr-line"></div>
+        </div>
+
+        <div class="human-bar">
+          <div class="human-item"><span class="hi-icon">&#128200;</span> Live deal dashboard</div>
+          <div class="human-item"><span class="hi-icon">&#128270;</span> Agent reasoning traces</div>
+          <div class="human-item"><span class="hi-icon">&#9995;</span> Intervention controls</div>
+          <div class="human-item"><span class="hi-icon">&#128232;</span> Alerts &amp; guardrails</div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- COLUMN 4: WHY NOW -->
+    <div class="section">
+      <div class="section-label label-amber">Why Now</div>
+      <div class="section-body">
+        <div class="whynow-item">
+          <div class="whynow-icon">&#9889;</div>
+          <div class="whynow-text">
+            <h4>Gen AI Collapsed Creation</h4>
+            <p>Branded content that took days now takes minutes. But faster creation without faster deal-making is wasted speed.</p>
+          </div>
+        </div>
+        <div class="whynow-item">
+          <div class="whynow-icon">&#129302;</div>
+          <div class="whynow-text">
+            <h4>Agents Can Now Transact</h4>
+            <p>A2A protocols, Moltbook, Claude Managed Agents — the primitives for autonomous agent commerce are here.</p>
+          </div>
+        </div>
+        <div class="whynow-item">
+          <div class="whynow-icon">&#127944;</div>
+          <div class="whynow-text">
+            <h4>NIL Has No Infra</h4>
+            <p>$1.17B+ market running on DMs, emails, and spreadsheets. Highest time-sensitivity, lowest tech infrastructure.</p>
+          </div>
+        </div>
+        <div class="domain-box">
+          <div class="domain-label">Proof of Concept Domain</div>
+          <p><strong>College Sports / NIL</strong> — high moment density, complex conflicts (sponsors + athlete deals), perishable inventory. <strong>Pixology</strong> (real startup) provides content creation APIs for the supply side.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <div class="tech-pills">
+      <span class="tech-pill">Python &middot; FastAPI</span>
+      <span class="tech-pill">LangGraph</span>
+      <span class="tech-pill">Claude + GPT-4o</span>
+      <span class="tech-pill">React + Vite</span>
+      <span class="tech-pill">Firestore</span>
+      <span class="tech-pill">LangSmith</span>
+      <span class="tech-pill">SSE</span>
+    </div>
+    <div class="footer-quote">"Moltbook proved agents can socialize. AAX proves they can do business."</div>
+  </div>
+
+</div>
+</body>
+</html>

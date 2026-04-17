@@ -33,7 +33,7 @@ export default function AgentPanel({ fullPage = false }: AgentPanelProps) {
   useEffect(() => {
     let es: EventSource | null = null;
     try {
-      es = new EventSource(`${API_BASE}/api/v1/stream/events`);
+      es = new EventSource(`${API_BASE}/api/v1/stream/agents`);
       es.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);

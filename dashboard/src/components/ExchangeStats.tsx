@@ -15,7 +15,7 @@ export default function ExchangeStats() {
     async function fetchStats() {
       try {
         const [statsRes, orgsRes] = await Promise.all([
-          fetch(`${API_BASE}/api/v1/exchange/stats`).catch(() => null),
+          fetch(`${API_BASE}/api/v1/deals/stats`).catch(() => null),
           fetch(`${API_BASE}/api/v1/orgs/`).catch(() => null),
         ]);
 
@@ -42,7 +42,7 @@ export default function ExchangeStats() {
   useEffect(() => {
     let es: EventSource | null = null;
     try {
-      es = new EventSource(`${API_BASE}/api/v1/stream/events`);
+      es = new EventSource(`${API_BASE}/api/v1/stream/deals`);
       es.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
