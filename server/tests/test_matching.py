@@ -4,7 +4,12 @@ from src.matching.scorer import MatchingEngine
 from src.schemas.agents import BrandProfile, DemandAgentProfile, StandingQuery
 from src.schemas.common import ContentFormat, Sport
 from src.schemas.matching import MatchResult
-from src.schemas.opportunities import AudienceInfo, OpportunityRecord, OpportunitySignal, SubjectInfo
+from src.schemas.opportunities import (
+    AudienceInfo,
+    OpportunityRecord,
+    OpportunitySignal,
+    SubjectInfo,
+)
 
 
 def _make_opportunity(

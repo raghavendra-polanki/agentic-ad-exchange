@@ -1,6 +1,11 @@
 """Tests for the Deal Engine — deal-making and fulfillment state machines."""
 
-from src.engine import create_deal_making_graph, create_fulfillment_graph, run_deal_making, run_fulfillment
+from src.engine import (
+    create_deal_making_graph,
+    create_fulfillment_graph,
+    run_deal_making,
+    run_fulfillment,
+)
 from src.schemas.deals import DealAgreement, DealState, DealTerms, FulfillmentState, Price
 from src.schemas.opportunities import AudienceInfo, OpportunitySignal, SubjectInfo
 
@@ -68,7 +73,7 @@ def test_deal_making_has_audit_events():
 
 
 def test_fulfillment_happy_path():
-    """Run fulfillment through the happy path: brief -> content -> validate -> approve -> deliver -> complete."""
+    """Run fulfillment: brief -> content -> validate -> approve -> deliver."""
     agreement = DealAgreement(
         deal_id="deal-test-001",
         opportunity_id="opp-test-001",

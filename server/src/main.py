@@ -1,10 +1,12 @@
 import asyncio
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 
-from src.api import agents, content, deals, opportunities, proposals, stream
+from src.api import agents, content, deals, opportunities, orgs, proposals, stream
 from src.conflict import init_conflict_engine
 
 
@@ -51,6 +53,7 @@ app.add_middleware(
 )
 
 # Agent-facing API (REST + webhooks)
+app.include_router(orgs.router, prefix="/api/v1/orgs", tags=["orgs"])
 app.include_router(agents.router, prefix="/api/v1/agents", tags=["agents"])
 app.include_router(opportunities.router, prefix="/api/v1/opportunities", tags=["opportunities"])
 app.include_router(proposals.router, prefix="/api/v1/proposals", tags=["proposals"])
@@ -59,6 +62,29 @@ app.include_router(content.router, prefix="/api/v1/content", tags=["content"])
 
 # Dashboard-facing API (SSE)
 app.include_router(stream.router, prefix="/api/v1/stream", tags=["stream"])
+
+
+# ── Protocol files ────────────────────────────────────────────────────
+
+_PROTOCOL_DIR = Path(__file__).parent.parent / "protocol"
+
+
+@app.get("/protocol.md")
+async def get_protocol():
+    """Serve the main protocol specification."""
+    path = _PROTOCOL_DIR / "protocol.md"
+    if path.exists():
+        return PlainTextResponse(path.read_text(), media_type="text/markdown")
+    return PlainTextResponse("Protocol file not found", status_code=404)
+
+
+@app.get("/protocol/{filename}")
+async def get_protocol_file(filename: str):
+    """Serve protocol documentation files."""
+    path = _PROTOCOL_DIR / filename
+    if path.exists() and path.suffix == ".md":
+        return PlainTextResponse(path.read_text(), media_type="text/markdown")
+    return PlainTextResponse("Protocol file not found", status_code=404)
 
 
 @app.get("/health")

@@ -1,27 +1,70 @@
-import { ExchangeStats } from "./components/ExchangeStats";
-import { DealFlow } from "./components/DealFlow";
-import { AgentPanel } from "./components/AgentPanel";
-import "./App.css";
+import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
+import Dashboard from './pages/Dashboard';
+import Agents from './pages/Agents';
+import Onboarding from './pages/Onboarding';
+import './App.css';
 
 function App() {
   return (
-    <div className="aax-dashboard">
-      <header className="aax-header">
-        <h1 className="aax-title">AAX</h1>
-        <span className="aax-subtitle">Agentic Ad Exchange</span>
-      </header>
-
-      <ExchangeStats />
-
-      <main className="aax-main">
-        <div className="aax-left">
-          <DealFlow />
+    <BrowserRouter>
+      <aside className="sidebar">
+        <div className="sidebar-logo">
+          <h1>AAX</h1>
+          <span>Agentic Ad Exchange</span>
         </div>
-        <div className="aax-right">
-          <AgentPanel />
+
+        <nav className="sidebar-nav">
+          <div className="sidebar-section">
+            <div className="sidebar-section-title">Exchange</div>
+            <NavLink to="/" end className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="7" height="7" />
+                <rect x="14" y="3" width="7" height="7" />
+                <rect x="3" y="14" width="7" height="7" />
+                <rect x="14" y="14" width="7" height="7" />
+              </svg>
+              Dashboard
+            </NavLink>
+            <NavLink to="/agents" className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+              </svg>
+              Agents
+            </NavLink>
+          </div>
+
+          <div className="sidebar-section">
+            <div className="sidebar-section-title">Manage</div>
+            <NavLink to="/onboard" className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="16" />
+                <line x1="8" y1="12" x2="16" y2="12" />
+              </svg>
+              Onboard
+            </NavLink>
+          </div>
+        </nav>
+
+        <div className="sidebar-footer">
+          <div className="sidebar-status">
+            <div className="status-dot" />
+            Exchange Online
+          </div>
         </div>
+      </aside>
+
+      <main className="main-content">
+        <Routes>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/agents" element={<Agents />} />
+          <Route path="/onboard" element={<Onboarding />} />
+        </Routes>
       </main>
-    </div>
+    </BrowserRouter>
   );
 }
 

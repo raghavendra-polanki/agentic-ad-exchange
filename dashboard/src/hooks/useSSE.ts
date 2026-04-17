@@ -39,7 +39,7 @@ export function useSSE(endpoint: string) {
     eventTypes.forEach((type) => {
       es.addEventListener(type, (e: MessageEvent) => {
         const newEvent: SSEEvent = {
-          event: type,
+          type: type,
           data: JSON.parse(e.data),
           timestamp: new Date().toISOString(),
         };
