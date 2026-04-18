@@ -17,6 +17,21 @@ interface DealEvent {
   counter_terms?: Record<string, unknown>;
   matched_count?: number;
   description?: string;
+  brief?: {
+    deal_id: string;
+    athlete_name: string;
+    school: string;
+    sport: string;
+    moment_description: string;
+    brand_name: string;
+    deal_terms?: { content_format?: string };
+  };
+  content_url?: string;
+  format?: string;
+  passed?: boolean;
+  score?: number;
+  checks?: Record<string, boolean>;
+  issues?: string[];
 }
 
 interface DealTrace {
@@ -310,6 +325,89 @@ export default function DealDetail() {
                     </div>
                   </div>
                 );
+              }
+
+              if (ev.type === 'brief_generated') {
+                return (
+                  <div key={i} className="t-entry">
+                    <div className="t-left">
+                      <div className="t-avatar" style={{background: 'var(--amber)'}}>B</div>
+                      <div className="t-line" />
+                    </div>
+                    <div className="t-body">
+                      <div className="t-head">
+                        <span className="t-name">AAX Exchange</span>
+                        <span className="t-action">generated creative brief</span>
+                        <span className="t-time">{t(ev.timestamp)}</span>
+                      </div>
+                      <p className="t-text">
+                        Create {ev.brief?.deal_terms?.content_format} featuring {ev.brief?.athlete_name} ({ev.brief?.school}){' '}
+                        for {ev.brief?.brand_name}. Moment: {ev.brief?.moment_description}
+                      </p>
+                    </div>
+                  </div>
+                );
+              }
+
+              if (ev.type === 'content_submitted') {
+                return (
+                  <div key={i} className="t-entry">
+                    <div className="t-left">
+                      <div className={`t-avatar ${avatarCls}`}>{initial}</div>
+                      <div className="t-line" />
+                    </div>
+                    <div className="t-body">
+                      <div className="t-head">
+                        <span className="t-name">{ev.actor}</span>
+                        <span className="t-action">submitted content</span>
+                        <span className="t-time">{t(ev.timestamp)}</span>
+                      </div>
+                      <p className="t-text">Content submitted: <a href={ev.content_url} target="_blank" rel="noopener noreferrer">{ev.content_url}</a></p>
+                    </div>
+                  </div>
+                );
+              }
+
+              if (ev.type === 'content_validated') {
+                return (
+                  <div key={i} className="t-entry">
+                    <div className="t-left">
+                      <div className="t-avatar" style={{background: ev.passed ? 'var(--green)' : 'var(--red)'}}>
+                        {ev.passed ? '\u2713' : '\u2717'}
+                      </div>
+                      <div className="t-line" />
+                    </div>
+                    <div className="t-body">
+                      <div className="t-head">
+                        <span className="t-name">AAX Exchange</span>
+                        <span className="t-action">validated content</span>
+                        <span className="t-time">{t(ev.timestamp)}</span>
+                      </div>
+                      <div className="t-validation">
+                        <div className="t-val-score">Score: {((ev.score ?? 0) * 100).toFixed(0)}%</div>
+                        {ev.checks && (
+                          <div className="t-val-checks">
+                            {Object.entries(ev.checks).map(([check, passed]) => (
+                              <span key={check} className={`t-val-check ${passed ? 'pass' : 'fail'}`}>
+                                {passed ? '\u2713' : '\u2717'} {check.replace(/_/g, ' ')}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        {ev.issues && ev.issues.length > 0 && (
+                          <div className="t-val-issues">
+                            {ev.issues.map((issue, j) => <p key={j}>{issue}</p>)}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              if (ev.type === 'deal_completed') {
+                // Handled by the outcome card below
+                return null;
               }
 
               // Unknown event type — render generically

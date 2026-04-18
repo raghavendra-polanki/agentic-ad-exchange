@@ -6,6 +6,7 @@ import hmac
 import json
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
 
 import httpx
@@ -188,12 +189,78 @@ async def receive_webhook(
     elif x_aax_event == "counter.received":
         asyncio.create_task(handle_counter(payload))
         return {"status": "processing"}
+    elif x_aax_event == "brief.generated":
+        asyncio.create_task(handle_brief(payload))
+        return {"status": "processing"}
+    elif x_aax_event == "content.revision_requested":
+        asyncio.create_task(handle_revision(payload))
+        return {"status": "processing"}
     elif x_aax_event == "deal.agreed":
         logger.info("Deal agreed! deal_id=%s", payload.get("deal_id"))
+        return {"status": "acknowledged"}
+    elif x_aax_event == "deal.completed":
+        logger.info("Deal completed! deal_id=%s — content delivered", payload.get("deal_id"))
         return {"status": "acknowledged"}
     else:
         logger.info("Unhandled event: %s", x_aax_event)
         return {"status": "received"}
+
+
+async def handle_brief(payload: dict):
+    """Handle a creative brief from the exchange — generate and submit content."""
+    deal_id = payload.get("deal_id")
+    brief = payload.get("brief", {})
+    logger.info(
+        "Brief received for deal %s: %s for %s",
+        deal_id,
+        brief.get("moment_description"),
+        brief.get("brand_name"),
+    )
+
+    # Generate mock content
+    content_url = f"https://pixology.example.com/content/{deal_id}_{int(time.time())}.png"
+    logger.info("Content generated: %s", content_url)
+
+    # Submit to exchange
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                f"{EXCHANGE_URL}/api/v1/content/{deal_id}",
+                headers={"Authorization": f"Bearer {credentials.get('api_key', '')}"},
+                json={"content_url": content_url, "format": "gameday_graphic"},
+            )
+            if resp.status_code == 200:
+                logger.info("Content submitted: %s", resp.json())
+            else:
+                logger.error("Content submission failed: %s %s", resp.status_code, resp.text)
+    except Exception as e:
+        logger.error("Failed to submit content: %s", e)
+
+
+async def handle_revision(payload: dict):
+    """Handle a content revision request — regenerate and resubmit."""
+    deal_id = payload.get("deal_id")
+    issues = payload.get("validation_issues", [])
+    logger.info("Revision requested for deal %s: %s", deal_id, issues)
+
+    # Generate new mock content with a different timestamp
+    content_url = f"https://pixology.example.com/content/{deal_id}_{int(time.time())}.png"
+    logger.info("Revised content generated: %s", content_url)
+
+    # Resubmit to exchange
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                f"{EXCHANGE_URL}/api/v1/content/{deal_id}",
+                headers={"Authorization": f"Bearer {credentials.get('api_key', '')}"},
+                json={"content_url": content_url, "format": "gameday_graphic"},
+            )
+            if resp.status_code == 200:
+                logger.info("Revised content submitted: %s", resp.json())
+            else:
+                logger.error("Revised content submission failed: %s %s", resp.status_code, resp.text)
+    except Exception as e:
+        logger.error("Failed to submit revised content: %s", e)
 
 
 async def handle_proposal(payload: dict):
