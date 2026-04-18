@@ -10,6 +10,7 @@ from src.engine.orchestrator import (
 )
 from src.schemas.opportunities import OpportunitySignal
 from src.schemas.proposals import Proposal
+from src.store import store
 
 router = APIRouter()
 
@@ -20,6 +21,24 @@ async def signal_opportunity(
     agent=Depends(get_current_agent),
 ):
     """Supply agent signals a new opportunity on the exchange."""
+    return await handle_signal_opportunity(agent, signal)
+
+
+@router.post("/signal")
+async def signal_from_dashboard(body: dict):
+    """Dashboard signals an opportunity on behalf of a supply agent.
+
+    No auth required — this is a dashboard convenience endpoint.
+    Body: {agent_id: str, signal: OpportunitySignal dict}
+    """
+    agent_id = body.get("agent_id", "")
+    signal_data = body.get("signal", {})
+
+    agent = store.get_agent(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Supply agent not found")
+
+    signal = OpportunitySignal(**signal_data)
     return await handle_signal_opportunity(agent, signal)
 
 

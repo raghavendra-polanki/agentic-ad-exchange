@@ -1,0 +1,225 @@
+import { useState, useEffect } from 'react';
+
+const API_BASE = 'http://localhost:8080';
+
+interface AgentOption {
+  agent_id: string;
+  name: string;
+  organization: string;
+  agent_type: string;
+}
+
+export default function SignalOpportunity() {
+  const [agents, setAgents] = useState<AgentOption[]>([]);
+  const [selectedAgent, setSelectedAgent] = useState('');
+
+  // Form state
+  const [athleteName, setAthleteName] = useState('Jane Doe');
+  const [school, setSchool] = useState('MIT');
+  const [sport, setSport] = useState('basketball');
+  const [momentDesc, setMomentDesc] = useState('Jane Doe scores 1000th career point — MIT Women\'s Basketball milestone moment');
+  const [reach, setReach] = useState('150000');
+  const [trendingScore, setTrendingScore] = useState('8.5');
+  const [minPrice, setMinPrice] = useState('500');
+  const [formats, setFormats] = useState(['gameday_graphic', 'social_post']);
+
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<Record<string, unknown> | null>(null);
+  const [error, setError] = useState('');
+
+  // Fetch supply agents
+  useEffect(() => {
+    async function fetchAgents() {
+      try {
+        const res = await fetch(`${API_BASE}/api/v1/agents`);
+        if (res.ok) {
+          const data = await res.json();
+          const supply = (data as AgentOption[]).filter(a => a.agent_type === 'supply');
+          setAgents(supply);
+          if (supply.length > 0 && !selectedAgent) {
+            setSelectedAgent(supply[0].agent_id);
+          }
+        }
+      } catch { /* */ }
+    }
+    fetchAgents();
+    const iv = setInterval(fetchAgents, 5000);
+    return () => clearInterval(iv);
+  }, [selectedAgent]);
+
+  function toggleFormat(fmt: string) {
+    setFormats(prev => prev.includes(fmt) ? prev.filter(f => f !== fmt) : [...prev, fmt]);
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError('');
+    setResult(null);
+    setLoading(true);
+
+    // Find the agent's API key — we need to call as that agent
+    // For managed agents, use a special server endpoint instead
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/opportunities/signal`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          agent_id: selectedAgent,
+          signal: {
+            content_description: momentDesc,
+            subjects: [{ athlete_name: athleteName, school, sport }],
+            audience: {
+              projected_reach: Number(reach),
+              trending_score: Number(trendingScore),
+              demographics: 'College athletics fans',
+            },
+            available_formats: formats,
+            min_price: Number(minPrice),
+            sport,
+          },
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: 'Request failed' }));
+        const detail = err.detail;
+        const msg = Array.isArray(detail)
+          ? detail.map((d: { msg?: string }) => d.msg || JSON.stringify(d)).join('; ')
+          : detail || `HTTP ${res.status}`;
+        throw new Error(msg);
+      }
+
+      setResult(await res.json());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div>
+      <div className="page-header">
+        <h1>Signal Opportunity</h1>
+        <p>Create a content opportunity that demand agents can bid on</p>
+      </div>
+
+      {result ? (
+        <div className="card">
+          <div className="card-header">
+            <span className="card-title">Opportunity Listed</span>
+            <span className="badge badge-completed">LIVE</span>
+          </div>
+          <div className="credentials-card">
+            <p style={{ color: 'var(--text-primary)', marginBottom: '12px' }}>
+              Opportunity is live! {(result as Record<string, unknown>).matched_count as number || 0} demand agents matched.
+            </p>
+            <div className="credential-row">
+              <span className="credential-label">Opportunity ID</span>
+              <span className="credential-value">{(result as Record<string, unknown>).opportunity_id as string}</span>
+            </div>
+            <div className="credential-row">
+              <span className="credential-label">Deal ID</span>
+              <span className="credential-value">{(result as Record<string, unknown>).deal_id as string}</span>
+            </div>
+            <button className="btn btn-primary" style={{ marginTop: '16px' }} onClick={() => setResult(null)}>
+              Signal Another
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="card">
+          <div className="card-header">
+            <span className="card-title">Content Moment</span>
+          </div>
+          <form onSubmit={handleSubmit}>
+            {agents.length === 0 ? (
+              <p style={{ color: 'var(--text-muted)', marginBottom: '16px' }}>
+                No supply agents registered. Create a supply agent on the Onboard page first.
+              </p>
+            ) : (
+              <div className="form-group">
+                <label className="form-label">Supply Agent</label>
+                <select className="form-input" value={selectedAgent} onChange={e => setSelectedAgent(e.target.value)}>
+                  {agents.map(a => (
+                    <option key={a.agent_id} value={a.agent_id}>
+                      {a.name} ({a.organization})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div className="form-group">
+              <label className="form-label">Moment Description *</label>
+              <textarea className="form-textarea" value={momentDesc} onChange={e => setMomentDesc(e.target.value)}
+                placeholder="What happened? Describe the content opportunity..." required />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+              <div className="form-group">
+                <label className="form-label">Athlete Name</label>
+                <input className="form-input" value={athleteName} onChange={e => setAthleteName(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">School</label>
+                <input className="form-input" value={school} onChange={e => setSchool(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Sport</label>
+                <select className="form-input" value={sport} onChange={e => setSport(e.target.value)}>
+                  <option value="basketball">Basketball</option>
+                  <option value="football">Football</option>
+                  <option value="soccer">Soccer</option>
+                  <option value="baseball">Baseball</option>
+                  <option value="track">Track</option>
+                  <option value="swimming">Swimming</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
+              <div className="form-group">
+                <label className="form-label">Audience Reach</label>
+                <input className="form-input" type="number" value={reach} onChange={e => setReach(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Trending Score (0-10)</label>
+                <input className="form-input" type="number" step="0.1" value={trendingScore} onChange={e => setTrendingScore(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Min Price ($)</label>
+                <input className="form-input" type="number" value={minPrice} onChange={e => setMinPrice(e.target.value)} />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Content Formats</label>
+              <div className="checkbox-group">
+                {[
+                  { value: 'gameday_graphic', label: 'Gameday Graphic' },
+                  { value: 'social_post', label: 'Social Post' },
+                  { value: 'highlight_reel', label: 'Highlight Reel' },
+                  { value: 'story', label: 'Story' },
+                  { value: 'video_clip', label: 'Video Clip' },
+                ].map(fmt => (
+                  <label key={fmt.value} className="checkbox-label">
+                    <input type="checkbox" checked={formats.includes(fmt.value)} onChange={() => toggleFormat(fmt.value)} />
+                    {fmt.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {error && <p style={{ color: 'var(--red)', fontSize: '13px', marginBottom: '12px' }}>{error}</p>}
+
+            <button className="btn btn-primary" type="submit" disabled={loading || !selectedAgent}>
+              {loading ? 'Signaling...' : 'Signal Opportunity'}
+            </button>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+}
