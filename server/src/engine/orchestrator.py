@@ -429,6 +429,11 @@ async def handle_respond_to_proposal(
                 ),
             )
 
+            # ── Trigger fulfillment: generate brief + deliver to supply ──
+            asyncio.create_task(
+                _trigger_fulfillment(deal, prop, opp),
+            )
+
         return {
             "status": "accepted",
             "deal_id": deal.deal_id if deal else None,
@@ -615,4 +620,219 @@ async def handle_select_winner(opportunity_id: str) -> dict | None:
         "proposal_id": winner.proposal_id,
         "demand_org": winner.demand_org,
         "price": winner.deal_terms.price.amount if winner.deal_terms else 0,
+    }
+
+
+# ── Fulfillment ──────────────────────────────────────────────────────
+
+
+async def _trigger_fulfillment(deal, prop, opp):
+    """Generate creative brief and deliver to supply agent."""
+    import asyncio as _asyncio
+    await _asyncio.sleep(1)  # small delay for deal.agreed webhooks to land
+
+    # Build brief from deal + opportunity data
+    signal = opp.signal if opp else None
+    subjects = signal.subjects if signal else []
+    athlete = subjects[0].athlete_name if subjects else ""
+    school = subjects[0].school if subjects else ""
+    sport = subjects[0].sport if subjects else ""
+
+    brief = {
+        "deal_id": deal.deal_id,
+        "deal_terms": prop.deal_terms.model_dump(mode="json"),
+        "athlete_name": athlete,
+        "school": school,
+        "sport": sport,
+        "moment_description": deal.moment_description,
+        "brand_name": prop.demand_org,
+    }
+
+    # Store brief in deal results
+    store.deal_results.setdefault(deal.deal_id, {})
+    if isinstance(store.deal_results[deal.deal_id], dict):
+        store.deal_results[deal.deal_id]["brief"] = brief
+
+    # Update deal state
+    store.update_deal(deal.deal_id, state="fulfillment_brief_sent")
+
+    # Record event
+    store.add_deal_event(deal.deal_id, {
+        "type": "brief_generated",
+        "actor": "AAX Exchange",
+        "actor_type": "platform",
+        "brief": brief,
+        "timestamp": datetime.now(UTC).isoformat(),
+    })
+
+    await sse_bus.publish("fulfillment_update", {
+        "deal_id": deal.deal_id,
+        "state": "fulfillment_brief_sent",
+        "stage": "brief_generated",
+        "timestamp": datetime.now(UTC).isoformat(),
+    })
+
+    # Deliver brief to supply agent via webhook
+    if opp:
+        await deliver_webhook(
+            opp.supply_agent_id,
+            "brief.generated",
+            {
+                "deal_id": deal.deal_id,
+                "brief": brief,
+                "next_actions": [
+                    {
+                        "action": "submit_content",
+                        "endpoint": f"POST /api/v1/content/{deal.deal_id}",
+                        "description": (
+                            "Generate content matching the brief and submit it."
+                        ),
+                    },
+                ],
+            },
+        )
+
+
+async def handle_content_submission(
+    deal_id: str,
+    submission_data: dict,
+    agent,
+) -> dict:
+    """Process content submitted by supply agent. Validate and complete."""
+    deal = store.deals.get(deal_id)
+    if not deal:
+        return None
+
+    content_url = submission_data.get("content_url", "")
+    content_format = submission_data.get("format", "gameday_graphic")
+
+    # Record submission event
+    store.add_deal_event(deal_id, {
+        "type": "content_submitted",
+        "actor": agent.organization,
+        "actor_type": "supply",
+        "content_url": content_url,
+        "format": content_format,
+        "timestamp": datetime.now(UTC).isoformat(),
+    })
+
+    store.update_deal(deal_id, state="fulfillment_content_submitted")
+
+    await sse_bus.publish("fulfillment_update", {
+        "deal_id": deal_id,
+        "state": "fulfillment_content_submitted",
+        "stage": "content_submitted",
+        "content_url": content_url,
+        "timestamp": datetime.now(UTC).isoformat(),
+    })
+
+    # Validate content (placeholder — will be replaced with Claude Vision)
+    validation = _validate_content(content_url, deal)
+
+    # Record validation event
+    store.add_deal_event(deal_id, {
+        "type": "content_validated",
+        "actor": "AAX Exchange",
+        "actor_type": "platform",
+        "passed": validation["passed"],
+        "score": validation["score"],
+        "checks": validation["checks"],
+        "issues": validation.get("issues", []),
+        "timestamp": datetime.now(UTC).isoformat(),
+    })
+
+    if validation["passed"]:
+        store.update_deal(deal_id, state="completed")
+        store.add_deal_event(deal_id, {
+            "type": "deal_completed",
+            "actor": "AAX Exchange",
+            "actor_type": "platform",
+            "timestamp": datetime.now(UTC).isoformat(),
+        })
+
+        await sse_bus.publish("deal_completed", {
+            "deal_id": deal_id,
+            "state": "completed",
+            "supply_org": deal.supply_org,
+            "demand_org": deal.demand_org,
+            "content_url": content_url,
+            "validation": validation,
+            "timestamp": datetime.now(UTC).isoformat(),
+        })
+
+        # Notify both agents
+        opp = store.opportunities.get(deal.opportunity_id)
+        if opp:
+            completed_payload = {
+                "deal_id": deal_id,
+                "content_url": content_url,
+                "validation": validation,
+            }
+            asyncio.create_task(
+                deliver_webhook(
+                    opp.supply_agent_id, "deal.completed", completed_payload,
+                ),
+            )
+            # Find demand agent from proposals
+            for p in store.proposals.values():
+                if p.opportunity_id == deal.opportunity_id and p.status == "accepted":
+                    asyncio.create_task(
+                        deliver_webhook(
+                            p.demand_agent_id, "deal.completed", completed_payload,
+                        ),
+                    )
+                    break
+
+        return {
+            "status": "validated",
+            "validation": validation,
+            "deal_state": "completed",
+        }
+    else:
+        # Content failed validation
+        store.update_deal(deal_id, state="fulfillment_revision_needed")
+
+        await sse_bus.publish("fulfillment_update", {
+            "deal_id": deal_id,
+            "state": "fulfillment_revision_needed",
+            "stage": "revision_requested",
+            "issues": validation.get("issues", []),
+            "timestamp": datetime.now(UTC).isoformat(),
+        })
+
+        # Deliver revision request to supply agent
+        opp = store.opportunities.get(deal.opportunity_id)
+        if opp:
+            asyncio.create_task(deliver_webhook(
+                opp.supply_agent_id,
+                "content.revision_requested",
+                {
+                    "deal_id": deal_id,
+                    "validation": validation,
+                    "next_actions": [{
+                        "action": "resubmit_content",
+                        "endpoint": f"POST /api/v1/content/{deal_id}",
+                    }],
+                },
+            ))
+
+        return {
+            "status": "revision_needed",
+            "validation": validation,
+            "deal_state": "fulfillment_revision_needed",
+        }
+
+
+def _validate_content(content_url: str, deal) -> dict:
+    """Validate content. Placeholder — returns pass. Replace with Claude Vision."""
+    return {
+        "passed": True,
+        "score": 0.94,
+        "checks": {
+            "brand_logo_present": True,
+            "disclosure_present": True,
+            "messaging_aligned": True,
+            "color_palette_match": True,
+        },
+        "issues": [],
     }
