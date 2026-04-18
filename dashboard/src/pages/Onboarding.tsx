@@ -110,7 +110,8 @@ export default function Onboarding() {
     }
 
     try {
-      const res = await fetch(`${API_BASE}/api/v1/agents/register`, {
+      // Use managed agent endpoint — creates + starts the agent with Claude
+      const res = await fetch(`${API_BASE}/api/v1/agents/managed`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

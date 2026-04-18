@@ -121,6 +121,48 @@ async def update_agent_profile(
     return {"status": "updated", "agent_id": agent.agent_id}
 
 
+@router.post("/managed")
+async def create_managed_agent(
+    config: dict,
+    authorization: str | None = Header(None),
+) -> dict[str, Any]:
+    """Create a managed agent that runs in-process using Claude."""
+    from src.engine.managed import ManagedAgentRunner
+
+    # Resolve org
+    org = None
+    if authorization:
+        token = authorization.removeprefix("Bearer ").strip()
+        if token.startswith("aax_org_"):
+            org = store.get_org_by_key(token)
+
+    org_id = org.org_id if org else None
+
+    # Start the managed runner
+    runner = ManagedAgentRunner(org_id=org_id or "", agent_config=config)
+    await runner.start()
+
+    await sse_bus.publish("agent_status", {
+        "agent_id": runner.agent_id,
+        "name": config.get("name", "Managed Agent"),
+        "organization": config.get("organization", "Unknown"),
+        "agent_type": config.get("agent_type", "demand"),
+        "status": "online",
+        "is_active": True,
+        "managed": True,
+    })
+
+    return {
+        "agent_id": runner.agent_id,
+        "status": "running",
+        "managed": True,
+        "message": (
+            f"Managed agent '{config.get('name')}' is now running "
+            f"and will autonomously participate on the exchange."
+        ),
+    }
+
+
 @router.get("")
 async def list_agents():
     """List all registered agents (for dashboard)."""
