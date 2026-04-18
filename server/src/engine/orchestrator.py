@@ -824,15 +824,6 @@ async def handle_content_submission(
 
 
 def _validate_content(content_url: str, deal) -> dict:
-    """Validate content. Placeholder — returns pass. Replace with Claude Vision."""
-    return {
-        "passed": True,
-        "score": 0.94,
-        "checks": {
-            "brand_logo_present": True,
-            "disclosure_present": True,
-            "messaging_aligned": True,
-            "color_palette_match": True,
-        },
-        "issues": [],
-    }
+    """Validate content using Claude Vision (or fallback)."""
+    from src.validation.content import validate_content
+    return validate_content(content_url, deal)
