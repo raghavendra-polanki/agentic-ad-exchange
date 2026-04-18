@@ -957,6 +957,23 @@
   opacity: 0.9;
 }
 .t-outcome-card strong { color: var(--text-primary); }
+
+/* Conflict block */
+.t-conflict {
+  margin-top: 8px;
+  padding: 10px 14px;
+  background: rgba(239, 68, 68, 0.06);
+  border-left: 3px solid var(--red);
+  border-radius: 0 8px 8px 0;
+}
+.t-conflict-item {
+  font-size: 13px;
+  color: var(--text-primary);
+  margin: 0 0 4px;
+  line-height: 1.5;
+}
+.t-conflict-item:last-child { margin-bottom: 0; }
+.t-conflict-item strong { color: var(--red); }
 .t-outcome-card.failed {
   background: rgba(239, 68, 68, 0.06);
   border-color: rgba(239, 68, 68, 0.12);

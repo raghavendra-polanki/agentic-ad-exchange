@@ -91,7 +91,7 @@ async def get_llm_reasoning(signal: dict, score: int, price: float) -> str | Non
 
 async def onboard():
     """Register as demand agent on the exchange."""
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         logger.info("Reading protocol from %s/protocol.md ...", EXCHANGE_URL)
         resp = await client.get(f"{EXCHANGE_URL}/protocol.md")
         if resp.status_code == 200:
@@ -109,7 +109,8 @@ async def onboard():
                 "callback_url": f"http://localhost:{AGENT_PORT}/webhook",
                 "brand_profile": BRAND_PROFILE,
                 "standing_queries": [
-                    {"sport": "all", "min_reach": 5000},
+                    {"sport": "basketball", "min_reach": 5000},
+                    {"sport": "football", "min_reach": 5000},
                 ],
             },
         )
@@ -267,7 +268,7 @@ async def handle_opportunity(payload: dict):
     logger.info("Evaluation: %s", reasoning)
 
     if not should_bid:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             await client.post(
                 f"{EXCHANGE_URL}/api/v1/opportunities/{opportunity_id}/pass",
                 headers={"Authorization": f"Bearer {credentials.get('api_key', '')}"},
@@ -275,7 +276,7 @@ async def handle_opportunity(payload: dict):
         return {"status": "passed"}
 
     # Submit proposal
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(
             f"{EXCHANGE_URL}/api/v1/opportunities/{opportunity_id}/propose",
             headers={"Authorization": f"Bearer {credentials.get('api_key', '')}"},
@@ -323,7 +324,7 @@ async def handle_counter(payload: dict):
 
     logger.info("Decision: %s — %s", decision, reasoning)
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(
             f"{EXCHANGE_URL}/api/v1/proposals/{proposal_id}/respond",
             headers={"Authorization": f"Bearer {credentials.get('api_key', '')}"},

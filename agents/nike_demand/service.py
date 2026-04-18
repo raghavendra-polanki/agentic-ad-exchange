@@ -267,7 +267,7 @@ async def handle_opportunity(payload: dict):
 
     if not should_bid:
         # Pass on this opportunity
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             await client.post(
                 f"{EXCHANGE_URL}/api/v1/opportunities/{opportunity_id}/pass",
                 headers={"Authorization": f"Bearer {credentials.get('api_key', '')}"},
@@ -275,7 +275,8 @@ async def handle_opportunity(payload: dict):
         return {"status": "passed"}
 
     # Submit proposal
-    async with httpx.AsyncClient() as client:
+    try:
+      async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(
             f"{EXCHANGE_URL}/api/v1/opportunities/{opportunity_id}/propose",
             headers={"Authorization": f"Bearer {credentials.get('api_key', '')}"},
@@ -302,6 +303,8 @@ async def handle_opportunity(payload: dict):
             logger.info("Proposal submitted: %s", data)
         else:
             logger.error("Proposal failed: %s %s", resp.status_code, resp.text)
+    except Exception as e:
+        logger.error("Failed to submit proposal: %s", e)
 
     return {"status": "proposed", "price": price}
 
@@ -323,16 +326,17 @@ async def handle_counter(payload: dict):
 
     logger.info("Decision: %s — %s", decision, reasoning)
 
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            f"{EXCHANGE_URL}/api/v1/proposals/{proposal_id}/respond",
-            headers={"Authorization": f"Bearer {credentials.get('api_key', '')}"},
-            json={"decision": decision, "reasoning": reasoning},
-        )
-        if resp.status_code == 200:
-            logger.info("Response: %s", resp.json())
-
-    return {"status": decision}
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                f"{EXCHANGE_URL}/api/v1/proposals/{proposal_id}/respond",
+                headers={"Authorization": f"Bearer {credentials.get('api_key', '')}"},
+                json={"decision": decision, "reasoning": reasoning},
+            )
+            if resp.status_code == 200:
+                logger.info("Response: %s", resp.json())
+    except Exception as e:
+        logger.error("Failed to respond to counter: %s", e)
 
 
 @app.get("/health")

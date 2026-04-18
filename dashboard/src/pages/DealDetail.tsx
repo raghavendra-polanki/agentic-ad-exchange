@@ -3,8 +3,25 @@ import { useParams, Link } from 'react-router-dom';
 
 const API_BASE = 'http://localhost:8080';
 
+interface DealEvent {
+  type: string;
+  actor: string;
+  actor_type: string;
+  timestamp: string;
+  reasoning?: string;
+  price?: number;
+  proposal_id?: string;
+  round?: number;
+  scores?: Record<string, number>;
+  conflicts?: Array<{ conflict_type: string; description: string; entities_involved: string[] }>;
+  counter_terms?: Record<string, unknown>;
+  matched_count?: number;
+  description?: string;
+}
+
 interface DealTrace {
   deal_id: string;
+  events: DealEvent[];
   deal: {
     deal_id: string;
     opportunity_id: string;
@@ -79,23 +96,35 @@ export default function DealDetail() {
   const [trace, setTrace] = useState<DealTrace | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const [notFound, setNotFound] = useState(false);
+
   useEffect(() => {
     async function fetchTrace() {
       try {
         const res = await fetch(`${API_BASE}/api/v1/deals/${dealId}/trace`);
-        if (res.ok) setTrace(await res.json());
+        if (res.ok) {
+          setTrace(await res.json());
+        } else if (res.status === 404) {
+          setNotFound(true);
+        }
       } catch { /* */ }
       finally { setLoading(false); }
     }
     fetchTrace();
-    const iv = setInterval(fetchTrace, 5000);
+    // Only poll if deal exists
+    const iv = setInterval(() => { if (!notFound) fetchTrace(); }, 5000);
     return () => clearInterval(iv);
   }, [dealId]);
 
   if (loading) return <div className="empty-state">Loading...</div>;
-  if (!trace) return <div className="empty-state">Deal not found</div>;
+  if (notFound || !trace) return (
+    <div className="dd">
+      <Link to="/" className="dd-back">&larr; Dashboard</Link>
+      <div className="empty-state">Deal not found — it may have been cleared on server restart.</div>
+    </div>
+  );
 
-  const { deal, proposals, agreement } = trace;
+  const { deal, proposals, agreement, events } = trace;
   const price = deal.deal_terms?.price?.amount;
   const fmt = deal.deal_terms?.content_format?.replace(/_/g, ' ') || 'content';
   const platforms = deal.deal_terms?.platforms || [];
@@ -139,89 +168,168 @@ export default function DealDetail() {
           <h2 className="dd-section">Negotiation Thread</h2>
           <div className="dd-thread">
 
-            {/* Signal */}
-            <div className="t-entry">
-              <div className="t-left">
-                <div className="t-avatar supply">{deal.supply_org.charAt(0)}</div>
-                <div className="t-line" />
-              </div>
-              <div className="t-body">
-                <div className="t-head">
-                  <span className="t-name">{deal.supply_org}</span>
-                  <span className="t-action">listed opportunity</span>
-                  <span className="t-time">{t(deal.created_at)}</span>
-                </div>
-                <p className="t-text">{deal.moment_description}</p>
-              </div>
-            </div>
+            {/* Render all events chronologically */}
+            {events.map((ev, i) => {
+              const avatarCls = ev.actor_type === 'supply' ? 'supply' : 'demand';
+              const initial = ev.actor?.charAt(0) || '?';
 
-            {/* Proposals */}
-            {proposals.map((prop) => (
-              <div key={prop.proposal_id}>
-                <div className="t-entry">
-                  <div className="t-left">
-                    <div className="t-avatar demand">{prop.demand_org.charAt(0)}</div>
-                    <div className="t-line" />
-                  </div>
-                  <div className="t-body">
-                    <div className="t-head">
-                      <span className="t-name">{prop.demand_org}</span>
-                      <span className="t-action">
-                        submitted proposal &mdash; <strong className="t-price">${prop.deal_terms?.price?.amount?.toLocaleString()}</strong>
-                      </span>
-                      <span className="t-time">{t(prop.created_at)}</span>
-                    </div>
-
-                    {prop.reasoning && (
-                      <div className="t-reasoning">
-                        <div className="t-reasoning-tag">Agent Thinking</div>
-                        <p>{prop.reasoning}</p>
-                      </div>
-                    )}
-
-                    {prop.scores && (
-                      <div className="t-scores-grid">
-                        <div className="t-overall">
-                          <span className="t-overall-num">{prop.scores.overall}</span>
-                          <span className="t-overall-label">Score</span>
-                        </div>
-                        <div className="t-scores-list">
-                          <ScoreBar label="Audience" value={prop.scores.audience_fit} />
-                          <ScoreBar label="Brand Fit" value={prop.scores.brand_alignment} />
-                          <ScoreBar label="Price" value={prop.scores.price_adequacy} />
-                          <ScoreBar label="ROI" value={prop.scores.projected_roi} />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Supply response */}
-                {(prop.status === 'accepted' || prop.status === 'rejected' || prop.status === 'countered') && (
-                  <div className="t-entry">
+              if (ev.type === 'opportunity_listed') {
+                return (
+                  <div key={i} className="t-entry">
                     <div className="t-left">
-                      <div className="t-avatar supply">{deal.supply_org.charAt(0)}</div>
+                      <div className={`t-avatar ${avatarCls}`}>{initial}</div>
                       <div className="t-line" />
                     </div>
                     <div className="t-body">
                       <div className="t-head">
-                        <span className="t-name">{deal.supply_org}</span>
-                        <span className={`t-decision ${prop.status}`}>{prop.status}</span>
+                        <span className="t-name">{ev.actor}</span>
+                        <span className="t-action">listed opportunity &mdash; {ev.matched_count} agents matched</span>
+                        <span className="t-time">{t(ev.timestamp)}</span>
                       </div>
-                      {prop.status === 'accepted' && (
-                        <p className="t-text">Price ${prop.deal_terms?.price?.amount?.toLocaleString()} meets requirements. {prop.demand_org} is a strong brand partner.</p>
-                      )}
-                      {prop.status === 'rejected' && (
-                        <p className="t-text t-text-dim">Proposal did not meet content requirements.</p>
-                      )}
-                      {prop.status === 'countered' && (
-                        <p className="t-text">Counter-offer proposed with adjusted terms.</p>
+                      <p className="t-text">{ev.description || deal.moment_description}</p>
+                    </div>
+                  </div>
+                );
+              }
+
+              if (ev.type === 'conflict_blocked') {
+                return (
+                  <div key={i} className="t-entry">
+                    <div className="t-left">
+                      <div className="t-avatar demand" style={{ background: 'var(--red)' }}>{initial}</div>
+                      <div className="t-line" />
+                    </div>
+                    <div className="t-body">
+                      <div className="t-head">
+                        <span className="t-name">{ev.actor}</span>
+                        <span className="t-decision rejected">BLOCKED</span>
+                        <span className="t-time">{t(ev.timestamp)}</span>
+                      </div>
+                      {ev.conflicts && ev.conflicts.length > 0 && (
+                        <div className="t-conflict">
+                          {ev.conflicts.map((c, j) => (
+                            <p key={j} className="t-conflict-item">
+                              <strong>{c.conflict_type}:</strong> {c.description}
+                              {c.entities_involved?.length > 0 && <> ({c.entities_involved.join(', ')})</>}
+                            </p>
+                          ))}
+                        </div>
                       )}
                     </div>
                   </div>
-                )}
-              </div>
-            ))}
+                );
+              }
+
+              if (ev.type === 'proposal_submitted') {
+                // Find matching proposal for scores
+                const prop = proposals.find(p => p.proposal_id === ev.proposal_id);
+                return (
+                  <div key={i} className="t-entry">
+                    <div className="t-left">
+                      <div className={`t-avatar ${avatarCls}`}>{initial}</div>
+                      <div className="t-line" />
+                    </div>
+                    <div className="t-body">
+                      <div className="t-head">
+                        <span className="t-name">{ev.actor}</span>
+                        <span className="t-action">
+                          submitted proposal &mdash; <strong className="t-price">${ev.price?.toLocaleString()}</strong>
+                        </span>
+                        <span className="t-time">{t(ev.timestamp)}</span>
+                      </div>
+                      {ev.reasoning && (
+                        <div className="t-reasoning">
+                          <div className="t-reasoning-tag">Agent Thinking</div>
+                          <p>{ev.reasoning}</p>
+                        </div>
+                      )}
+                      {(ev.scores || prop?.scores) && (() => {
+                        const s = ev.scores || prop?.scores;
+                        if (!s) return null;
+                        return (
+                          <div className="t-scores-grid">
+                            <div className="t-overall">
+                              <span className="t-overall-num">{s.overall}</span>
+                              <span className="t-overall-label">Score</span>
+                            </div>
+                            <div className="t-scores-list">
+                              <ScoreBar label="Audience" value={s.audience_fit} />
+                              <ScoreBar label="Brand Fit" value={s.brand_alignment} />
+                              <ScoreBar label="Price" value={s.price_adequacy} />
+                              <ScoreBar label="ROI" value={s.projected_roi} />
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                );
+              }
+
+              if (ev.type === 'proposal_accepted' || ev.type === 'proposal_rejected') {
+                const isAccept = ev.type === 'proposal_accepted';
+                return (
+                  <div key={i} className="t-entry">
+                    <div className="t-left">
+                      <div className={`t-avatar ${avatarCls}`}>{initial}</div>
+                      <div className="t-line" />
+                    </div>
+                    <div className="t-body">
+                      <div className="t-head">
+                        <span className="t-name">{ev.actor}</span>
+                        <span className={`t-decision ${isAccept ? 'accepted' : 'rejected'}`}>
+                          {isAccept ? 'ACCEPTED' : 'REJECTED'}
+                        </span>
+                        <span className="t-time">{t(ev.timestamp)}</span>
+                      </div>
+                      {ev.reasoning && <p className="t-text">{ev.reasoning}</p>}
+                    </div>
+                  </div>
+                );
+              }
+
+              if (ev.type === 'counter_offer') {
+                return (
+                  <div key={i} className="t-entry">
+                    <div className="t-left">
+                      <div className={`t-avatar ${avatarCls}`}>{initial}</div>
+                      <div className="t-line" />
+                    </div>
+                    <div className="t-body">
+                      <div className="t-head">
+                        <span className="t-name">{ev.actor}</span>
+                        <span className="t-decision countered">COUNTER (Round {ev.round})</span>
+                        <span className="t-time">{t(ev.timestamp)}</span>
+                      </div>
+                      {ev.reasoning && (
+                        <div className="t-reasoning">
+                          <div className="t-reasoning-tag">Agent Thinking</div>
+                          <p>{ev.reasoning}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              }
+
+              // Unknown event type — render generically
+              return (
+                <div key={i} className="t-entry">
+                  <div className="t-left">
+                    <div className={`t-avatar ${avatarCls}`}>{initial}</div>
+                    <div className="t-line" />
+                  </div>
+                  <div className="t-body">
+                    <div className="t-head">
+                      <span className="t-name">{ev.actor}</span>
+                      <span className="t-action">{ev.type.replace(/_/g, ' ')}</span>
+                      <span className="t-time">{t(ev.timestamp)}</span>
+                    </div>
+                    {ev.reasoning && <p className="t-text">{ev.reasoning}</p>}
+                  </div>
+                </div>
+              );
+            })}
 
             {/* Outcome */}
             {isAgreed && agreement && (

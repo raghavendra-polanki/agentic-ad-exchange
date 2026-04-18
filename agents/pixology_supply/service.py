@@ -76,7 +76,7 @@ MIN_ACCEPTABLE_PRICE = 500  # Minimum price to accept a proposal
 
 async def onboard():
     """Register as supply agent on the exchange."""
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         # Read protocol
         logger.info("Reading protocol from %s/protocol.md ...", EXCHANGE_URL)
         resp = await client.get(f"{EXCHANGE_URL}/protocol.md")
@@ -255,7 +255,7 @@ async def handle_proposal(payload: dict):
     logger.info("Decision: %s — %s", decision, reasoning)
 
     # Submit response to exchange
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         response_body: dict = {
             "decision": decision,
             "reasoning": reasoning,
@@ -286,7 +286,7 @@ async def handle_counter(payload: dict):
     proposal_id = payload.get("proposal_id")
     logger.info("Counter received for proposal %s — accepting", proposal_id)
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(
             f"{EXCHANGE_URL}/api/v1/proposals/{proposal_id}/respond",
             headers={"Authorization": f"Bearer {credentials.get('api_key', '')}"},

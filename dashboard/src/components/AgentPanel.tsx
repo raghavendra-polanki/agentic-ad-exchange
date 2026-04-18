@@ -14,7 +14,7 @@ export default function AgentPanel({ fullPage = false }: AgentPanelProps) {
   useEffect(() => {
     async function fetchAgents() {
       try {
-        const res = await fetch(`${API_BASE}/api/v1/agents/`);
+        const res = await fetch(`${API_BASE}/api/v1/agents`);
         if (res.ok) {
           const raw = await res.json();
           const list = Array.isArray(raw) ? raw : raw.agents ?? [];
