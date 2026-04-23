@@ -26,4 +26,5 @@ class Sport(StrEnum):
     BASEBALL = "baseball"
     TRACK = "track"
     SWIMMING = "swimming"
+    HOCKEY = "hockey"
     OTHER = "other"

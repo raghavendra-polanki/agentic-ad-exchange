@@ -1,67 +1,21 @@
-"""ManagedAgentRunner — runs an agent in-process using Claude.
+"""ManagedAgentRunner — runs an agent in-process using Gemini.
 
 For Path A (managed agents): human creates an agent via dashboard,
-the platform runs it internally using Claude with the configured
+the platform runs it internally using Gemini with the configured
 brand persona as system prompt. Uses the store's notification queue
-instead of HTTP webhooks.
+instead of HTTP webhooks. Streams reasoning thoughts to SSE.
 """
 
 import asyncio
 import json
 import logging
-import os
-from pathlib import Path
 
+from src.api.stream import sse_bus
+from src.gemini.adaptor import gemini
 from src.schemas.agents import AgentType, RegisterAgentRequest
 from src.store import store
 
 logger = logging.getLogger("aax.managed")
-
-# Load API key from env or server/.env
-ANTHROPIC_API_KEY = (
-    os.getenv("ANTHROPIC_API_KEY")
-    or os.getenv("AAX_ANTHROPIC_API_KEY")
-    or ""
-)
-
-_env_file = Path(__file__).resolve().parent.parent.parent / ".env"
-if _env_file.exists():
-    for line in _env_file.read_text().splitlines():
-        if "=" in line and not line.startswith("#"):
-            k, v = line.split("=", 1)
-            os.environ.setdefault(k.strip(), v.strip())
-    if not ANTHROPIC_API_KEY:
-        ANTHROPIC_API_KEY = (
-            os.getenv("ANTHROPIC_API_KEY")
-            or os.getenv("AAX_ANTHROPIC_API_KEY")
-            or ""
-        )
-
-USE_LLM = bool(ANTHROPIC_API_KEY)
-if USE_LLM:
-    from anthropic import Anthropic
-
-    _llm = Anthropic(api_key=ANTHROPIC_API_KEY)
-
-
-def _call_claude(system_prompt: str, user_message: str) -> dict | None:
-    """Synchronous Claude call. Returns parsed JSON or None."""
-    if not USE_LLM:
-        return None
-    try:
-        resp = _llm.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=1024,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_message}],
-        )
-        text = resp.content[0].text
-        if "{" in text:
-            return json.loads(text[text.index("{"):text.rindex("}") + 1])
-    except Exception as e:
-        logger.warning("Claude call failed for managed agent: %s", e)
-    return None
-
 
 # Registry of running managed agents
 _runners: dict[str, "ManagedAgentRunner"] = {}
@@ -75,26 +29,37 @@ def get_all_runners() -> dict[str, "ManagedAgentRunner"]:
     return _runners
 
 
+def _parse_json_response(text: str) -> dict | None:
+    """Extract JSON from LLM response text."""
+    text = text.strip()
+    # Handle markdown code blocks
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+        if "```" in text:
+            text = text[:text.rindex("```")]
+        text = text.strip()
+    if "{" in text:
+        try:
+            return json.loads(text[text.index("{"):text.rindex("}") + 1])
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return None
+
+
 class ManagedAgentRunner:
     """Runs an agent in-process. Processes notifications from the store queue."""
 
-    def __init__(
-        self,
-        org_id: str,
-        agent_config: dict,
-    ):
+    def __init__(self, org_id: str, agent_config: dict):
         self.org_id = org_id
         self.agent_config = agent_config
         self.agent_id: str | None = None
         self.api_key: str | None = None
         self.running = False
         self._task: asyncio.Task | None = None
-
-        # Build persona prompt from config
         self.system_prompt = self._build_persona(agent_config)
 
     def _build_persona(self, config: dict) -> str:
-        """Build a Claude system prompt from agent configuration."""
+        """Build a rich Gemini system prompt from agent configuration."""
         agent_type = config.get("agent_type", "demand")
         name = config.get("name", "Agent")
         org = config.get("organization", "Unknown")
@@ -102,52 +67,76 @@ class ManagedAgentRunner:
 
         if agent_type == "demand":
             bp = config.get("brand_profile", {})
-            return (
-                f"You are {name}, an AI advertising agent for {org}.\n"
-                f"Role: Demand agent — you evaluate content sponsorship "
-                f"opportunities and decide whether to bid.\n"
-                f"Brand tone: {bp.get('tone', 'professional')}\n"
-                f"Tagline: {bp.get('tagline', '')}\n"
-                f"Budget: up to ${bp.get('budget_per_deal_max', 5000)} "
-                f"per deal\n"
-                f"Competitors to avoid: "
-                f"{', '.join(bp.get('competitor_exclusions', []))}\n"
-                f"Description: {desc}\n\n"
-                f"When evaluating opportunities, respond with JSON:\n"
-                f'{{"should_bid": true, "price": 2000, '
-                f'"reasoning": "detailed reasoning", '
-                f'"scores": {{"audience_fit": 80, "brand_alignment": 85, '
-                f'"price_adequacy": 75, "projected_roi": 70, '
-                f'"overall": 78}}}}'
-            )
-        else:
-            return (
-                f"You are {name}, an AI content agent for {org}.\n"
-                f"Role: Supply agent — you evaluate proposals from brands "
-                f"wanting to sponsor your athlete content.\n"
-                f"Description: {desc}\n"
-                f"Minimum price: $500\n\n"
-                f"When evaluating proposals, respond with JSON:\n"
-                f'{{"decision": "accept", "reasoning": "detailed reasoning",'
-                f' "counter_price": null}}'
-            )
+            budget = bp.get("budget_per_deal_max", 5000)
+            competitors = ", ".join(bp.get("competitor_exclusions", []))
+            return f"""You are {name}, an autonomous AI sponsorship agent for {org}.
+
+## Your Identity
+- Brand: {org} — "{bp.get('tagline', '')}"
+- Tone: {bp.get('tone', 'professional')}
+- Budget: up to ${budget} per deal
+- Competitors to NEVER sponsor alongside: {competitors}
+- Description: {desc}
+
+## Your Evaluation Framework
+When evaluating a content opportunity, think through each step:
+1. BRAND FIT: Does this athlete/moment align with {org}'s brand narrative?
+2. AUDIENCE: Is the reach worth the spend? What's the CPM?
+3. TIER VALUE: Which placement tier (1=background, 2=integration, 3=product interaction) maximizes impact?
+4. PRICE STRATEGY: What's fair market value? Bid strong but leave room for negotiation.
+5. TIMING: Is this moment still fresh?
+
+## Your Negotiation Style
+- Open strong but leave 20% room for counter
+- Accept counters within 25% of your bid
+- Never chase — if rejected, move on
+- Prefer exclusivity on the content
+
+## Response Format
+Respond with ONLY a JSON object:
+{{"should_bid": true, "price": 2000, "reasoning": "detailed multi-sentence reasoning explaining your decision process", "scores": {{"audience_fit": 80, "brand_alignment": 85, "price_adequacy": 75, "projected_roi": 70, "overall": 78}}}}
+
+If passing: {{"should_bid": false, "reasoning": "why this doesn't fit"}}"""
+
+            return f"""You are {name}, an autonomous AI content creation agent for {org}.
+
+## Your Identity
+- Service: Premium content creation for college athletes
+- Quality: Broadcast-grade, NCAA-compliant
+- Floor: whatever min_price was listed on the opportunity
+- Description: {desc}
+
+## Your Evaluation Framework
+When evaluating a brand proposal, think through:
+1. PRICE: Does it meet or exceed the opportunity's listed min_price? That's the only hard floor — respect what we priced it at.
+2. BRAND SAFETY: Will this brand help or hurt the athlete's image?
+3. CREATIVE FEASIBILITY: Can you produce natural-looking content at the requested tier?
+4. USAGE RIGHTS: Shorter is better for you. Push for 14 days max.
+5. PARTNER VALUE: Premium brands get slight preference, but local relevance also counts.
+
+## Your Negotiation Style
+- Accept any offer that meets or exceeds the listed min_price
+- Counter up ~20% only if the bid is exactly at floor AND you sense more room
+- Reject ONLY if the bid is below the listed min_price
+- For local/small-budget deals (min_price < $300), accept quickly — volume matters
+
+## Response Format
+Respond with ONLY a JSON object:
+{{"decision": "accept", "reasoning": "detailed reasoning", "counter_price": null}}
+For counter: {{"decision": "counter", "reasoning": "why countering", "counter_price": 750}}
+For reject: {{"decision": "reject", "reasoning": "why rejecting", "counter_price": null}}"""
 
     async def start(self):
         """Register with exchange and start processing loop."""
         req = RegisterAgentRequest(
-            agent_type=AgentType(
-                self.agent_config.get("agent_type", "demand"),
-            ),
+            agent_type=AgentType(self.agent_config.get("agent_type", "demand")),
             name=self.agent_config.get("name", "Managed Agent"),
             organization=self.agent_config.get("organization", "Unknown"),
             description=self.agent_config.get("description", ""),
-            # No callback_url — notifications go to polling queue
         )
 
-        # Add brand profile if demand agent
         if req.agent_type == AgentType.DEMAND:
             from src.schemas.agents import BrandProfile
-
             bp = self.agent_config.get("brand_profile", {})
             req.brand_profile = BrandProfile(**bp) if bp else None
 
@@ -155,17 +144,13 @@ class ManagedAgentRunner:
         self.agent_id = creds.agent_id
         self.api_key = creds.api_key
         self.running = True
-
         _runners[self.agent_id] = self
 
         logger.info(
-            "Managed agent started: %s (%s) — LLM=%s",
-            self.agent_config.get("name"),
-            self.agent_id,
-            "ON" if USE_LLM else "OFF",
+            "Managed agent started: %s (%s) — Gemini=%s",
+            self.agent_config.get("name"), self.agent_id,
+            "ON" if gemini.available else "OFF",
         )
-
-        # Start processing loop
         self._task = asyncio.create_task(self._process_loop())
 
     async def stop(self):
@@ -184,16 +169,44 @@ class ManagedAgentRunner:
                 notifications = store.drain_notifications(self.agent_id)
                 for notif in notifications:
                     await self._handle_notification(notif)
-
-                # Poll every 500ms
                 await asyncio.sleep(0.5)
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error(
-                    "Managed agent %s error: %s", self.agent_id, e,
-                )
+                logger.error("Managed agent %s error: %s", self.agent_id, e)
                 await asyncio.sleep(1)
+
+    async def _call_gemini(self, user_message: str, deal_id: str = "") -> dict | None:
+        """Call Gemini with streaming thoughts published to SSE."""
+        if not gemini.available:
+            return None
+
+        full_prompt = f"{self.system_prompt}\n\n---\n\n{user_message}"
+
+        async def on_thought(text: str):
+            await sse_bus.publish("agent_thinking", {
+                "agent_id": self.agent_id,
+                "agent_name": self.agent_config.get("name", "Managed Agent"),
+                "deal_id": deal_id,
+                "thought_chunk": text,
+            })
+
+        try:
+            result = await asyncio.wait_for(
+                gemini.reason(
+                    prompt=full_prompt,
+                    on_thought=on_thought,
+                    thinking_budget=4096,
+                ),
+                timeout=60,  # 60s max for Gemini reasoning
+            )
+            return _parse_json_response(result["text"])
+        except asyncio.TimeoutError:
+            logger.warning("Gemini timed out for managed agent %s", self.agent_id)
+            return None
+        except Exception as e:
+            logger.warning("Gemini call failed for managed agent %s: %s", self.agent_id, e)
+            return None
 
     async def _handle_notification(self, notif: dict):
         """Process a single notification."""
@@ -201,8 +214,11 @@ class ManagedAgentRunner:
         data = notif.get("data", notif)
 
         logger.info(
-            "Managed agent %s processing: %s",
-            self.agent_id, event_type,
+            "Managed agent %s received: event=%r, keys=%s, data_keys=%s",
+            self.agent_id,
+            event_type,
+            list(notif.keys()),
+            list(data.keys()) if isinstance(data, dict) else type(data).__name__,
         )
 
         if event_type == "opportunity.matched":
@@ -213,10 +229,12 @@ class ManagedAgentRunner:
             await self._handle_counter(data)
         elif event_type == "brief.generated":
             await self._handle_brief(data)
+        elif event_type:
+            logger.info("Managed agent %s: unhandled event %r", self.agent_id, event_type)
         else:
-            logger.info(
-                "Managed agent %s: unhandled event %s",
-                self.agent_id, event_type,
+            logger.warning(
+                "Managed agent %s: notification missing 'event' key. Full notif: %s",
+                self.agent_id, str(notif)[:300],
             )
 
     async def _handle_opportunity(self, data: dict):
@@ -224,50 +242,70 @@ class ManagedAgentRunner:
         import httpx
 
         opp_id = data.get("opportunity_id")
+        deal_id = data.get("deal_id", "")
         signal = data.get("signal", {})
 
         subjects = signal.get("subjects", [])
         athlete = subjects[0].get("athlete_name", "Unknown") if subjects else "Unknown"
         school = subjects[0].get("school", "") if subjects else ""
+        scene = data.get("scene_analysis", {})
+
+        # Build rich evaluation prompt
+        scene_context = ""
+        if scene:
+            zones = scene.get("brand_zones", [])
+            zone_text = "\n".join(
+                f"  - {z['zone_id']} (Tier {z['tier']}): {z['description']}"
+                for z in zones
+            )
+            scene_context = (
+                f"\n\nScene Analysis (from platform):\n"
+                f"  Type: {scene.get('scene_type')}, Mood: {scene.get('mood')}\n"
+                f"  Brand zones:\n{zone_text}\n"
+                f"  Categories: {scene.get('categories')}\n"
+                f"  Pricing guidance: {scene.get('pricing_guidance')}"
+            )
 
         user_msg = (
-            f"Evaluate this content opportunity:\n"
+            f"Evaluate this content sponsorship opportunity:\n"
             f"- Athlete: {athlete} ({school})\n"
             f"- Sport: {signal.get('sport', 'unknown')}\n"
             f"- Moment: {signal.get('content_description', '')}\n"
-            f"- Reach: {signal.get('audience', {}).get('projected_reach', 0):,}\n"
-            f"- Trending: {signal.get('audience', {}).get('trending_score', 0)}\n"
+            f"- Audience reach: {signal.get('audience', {}).get('projected_reach', 0):,}\n"
+            f"- Trending score: {signal.get('audience', {}).get('trending_score', 0)}\n"
             f"- Min price: ${signal.get('min_price', 0)}\n"
-            f"\nShould you bid? At what price?"
+            f"- Available formats: {signal.get('available_formats', [])}"
+            f"{scene_context}\n\n"
+            f"Should you bid? If yes, at what price and for which tier/zone?"
         )
 
-        result = _call_claude(self.system_prompt, user_msg)
+        result = await self._call_gemini(user_msg, deal_id)
 
         if result and result.get("should_bid"):
-            price = min(
-                self.agent_config.get("brand_profile", {}).get(
-                    "budget_per_deal_max", 5000,
-                ),
-                result.get("price", 1000),
+            budget = self.agent_config.get("brand_profile", {}).get(
+                "budget_per_deal_max", 5000,
             )
+            price = min(budget, result.get("price", 1000))
             reasoning = result.get("reasoning", "Managed agent bid")
-            scores = result.get("scores", {})
+            scores = result.get("scores", {"overall": 70})
         else:
-            # Fallback: simple bid logic
-            price = 1000
-            reasoning = (
-                result.get("reasoning", "")
-                if result else "Automated bid from managed agent"
-            )
-            scores = {"overall": 60}
             if result and not result.get("should_bid"):
-                logger.info("Managed agent %s: passing on %s", self.agent_id, opp_id)
+                pass_reason = result.get("reasoning", "Opportunity did not fit brand criteria.")
+                logger.info(
+                    "Managed agent %s: passing on %s — %s",
+                    self.agent_id, opp_id, pass_reason[:120],
+                )
+                agent = store.get_agent(self.agent_id)
+                if agent:
+                    from src.engine.orchestrator import handle_pass_opportunity
+                    await handle_pass_opportunity(agent, opp_id, pass_reason)
                 return
+            # Fallback if Gemini unavailable
+            price = 1000
+            reasoning = "Automated bid from managed agent"
+            scores = {"overall": 60}
 
-        logger.info(
-            "Managed agent %s: bidding $%s on %s",
-            self.agent_id, price, opp_id,
-        )
+        logger.info("Managed agent %s: bidding $%s on %s", self.agent_id, price, opp_id)
 
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
@@ -288,10 +326,7 @@ class ManagedAgentRunner:
                 if resp.status_code == 200:
                     logger.info("Managed agent %s: proposal submitted", self.agent_id)
                 else:
-                    logger.error(
-                        "Managed agent %s: proposal failed %s",
-                        self.agent_id, resp.text,
-                    )
+                    logger.error("Managed agent %s: proposal failed %s", self.agent_id, resp.text)
         except Exception as e:
             logger.error("Managed agent %s: %s", self.agent_id, e)
 
@@ -300,19 +335,36 @@ class ManagedAgentRunner:
         import httpx
 
         proposal_id = data.get("proposal_id")
+        deal_id = data.get("deal_id", "")
         demand_org = data.get("demand_org", "Unknown")
         deal_terms = data.get("deal_terms", {})
         price = deal_terms.get("price", {}).get("amount", 0)
 
+        # Look up the opportunity's listed min_price so the supply agent can
+        # respect the floor it originally set.
+        opportunity_id = data.get("opportunity_id", "")
+        min_price = 0
+        moment = ""
+        if opportunity_id:
+            opp = store.opportunities.get(opportunity_id)
+            if opp:
+                min_price = opp.signal.min_price or 0
+                moment = opp.signal.content_description or ""
+
         user_msg = (
-            f"Evaluate this proposal:\n"
+            f"Evaluate this sponsorship proposal:\n"
             f"- Brand: {demand_org}\n"
-            f"- Price: ${price}\n"
-            f"- Format: {deal_terms.get('content_format', 'unknown')}\n"
-            f"\nAccept, counter, or reject?"
+            f"- Moment: {moment[:200]}\n"
+            f"- Price offered: ${price}\n"
+            f"- Our listed min_price (the floor we set): ${min_price}\n"
+            f"- Content format: {deal_terms.get('content_format', 'unknown')}\n"
+            f"- Platforms: {deal_terms.get('platforms', [])}\n"
+            f"- Usage rights: {deal_terms.get('usage_rights_duration_days', 'N/A')} days\n"
+            f"\nShould you accept, counter, or reject? "
+            f"Remember: the listed min_price is the only hard floor."
         )
 
-        result = _call_claude(self.system_prompt, user_msg)
+        result = await self._call_gemini(user_msg, deal_id)
         decision = result.get("decision", "accept") if result else "accept"
         reasoning = (
             result.get("reasoning", "")
@@ -326,19 +378,13 @@ class ManagedAgentRunner:
 
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
-                body: dict = {
-                    "decision": decision,
-                    "reasoning": reasoning,
-                }
+                body: dict = {"decision": decision, "reasoning": reasoning}
                 if decision == "counter" and result:
                     cp = result.get("counter_price", price * 1.2)
                     body["counter_terms"] = {
                         "price": {"amount": cp, "currency": "USD"},
-                        "content_format": deal_terms.get(
-                            "content_format", "gameday_graphic",
-                        ),
+                        "content_format": deal_terms.get("content_format", "gameday_graphic"),
                     }
-
                 await client.post(
                     f"http://localhost:8080/api/v1/proposals/{proposal_id}/respond",
                     headers={"Authorization": f"Bearer {self.api_key}"},
@@ -348,27 +394,40 @@ class ManagedAgentRunner:
             logger.error("Managed agent %s: %s", self.agent_id, e)
 
     async def _handle_counter(self, data: dict):
-        """Handle counter-offer — accept if within budget."""
+        """Handle counter-offer — use Gemini to evaluate or fallback to budget check."""
         import httpx
 
         proposal_id = data.get("proposal_id")
+        deal_id = data.get("deal_id", "")
         counter_terms = data.get("counter_terms", {})
         counter_price = counter_terms.get("price", {}).get("amount", 0)
         budget = self.agent_config.get("brand_profile", {}).get(
             "budget_per_deal_max", 5000,
         )
 
-        if counter_price <= budget:
-            decision = "accept"
-            reasoning = f"Counter of ${counter_price} within budget."
-        else:
-            decision = "reject"
-            reasoning = f"Counter of ${counter_price} exceeds budget ${budget}."
-
-        logger.info(
-            "Managed agent %s: %s counter ($%s)",
-            self.agent_id, decision, counter_price,
+        # Try Gemini for nuanced evaluation
+        user_msg = (
+            f"The other party has counter-offered:\n"
+            f"- Counter price: ${counter_price}\n"
+            f"- Your budget limit: ${budget}\n"
+            f"- Original terms: {counter_terms}\n\n"
+            f"Accept or reject this counter-offer?"
         )
+        result = await self._call_gemini(user_msg, deal_id)
+
+        if result:
+            decision = result.get("decision", "accept" if counter_price <= budget else "reject")
+            reasoning = result.get("reasoning", "")
+        else:
+            # Fallback: simple budget check
+            if counter_price <= budget:
+                decision = "accept"
+                reasoning = f"Counter of ${counter_price} within budget."
+            else:
+                decision = "reject"
+                reasoning = f"Counter of ${counter_price} exceeds budget ${budget}."
+
+        logger.info("Managed agent %s: %s counter ($%s)", self.agent_id, decision, counter_price)
 
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
@@ -381,31 +440,13 @@ class ManagedAgentRunner:
             logger.error("Managed agent %s: %s", self.agent_id, e)
 
     async def _handle_brief(self, data: dict):
-        """Handle creative brief — submit mock content."""
-        import time
+        """Handle creative brief — platform owns content generation in v3.
 
-        import httpx
-
+        The managed agent acknowledges receipt of the brief; the platform
+        generates and validates the actual branded images.
+        """
         deal_id = data.get("deal_id")
-        content_url = (
-            f"https://managed-agent.aax.example/content/"
-            f"{deal_id}_{int(time.time())}.png"
-        )
-
         logger.info(
-            "Managed agent %s: submitting content for %s",
+            "Managed agent %s: received brief for %s — platform handles content generation",
             self.agent_id, deal_id,
         )
-
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                await client.post(
-                    f"http://localhost:8080/api/v1/content/{deal_id}",
-                    headers={"Authorization": f"Bearer {self.api_key}"},
-                    json={
-                        "content_url": content_url,
-                        "format": "gameday_graphic",
-                    },
-                )
-        except Exception as e:
-            logger.error("Managed agent %s: %s", self.agent_id, e)

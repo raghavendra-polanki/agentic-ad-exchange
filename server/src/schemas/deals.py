@@ -22,6 +22,12 @@ class DealState(StrEnum):
     DEAL_AGREED = "deal_agreed"
     DEAL_REJECTED = "deal_rejected"
     DEAL_EXPIRED = "deal_expired"
+    # Fulfillment states (deal continues through these after agreement)
+    FULFILLMENT_BRIEF_SENT = "fulfillment_brief_sent"
+    FULFILLMENT_CONTENT_SUBMITTED = "fulfillment_content_submitted"
+    FULFILLMENT_REVISION_NEEDED = "fulfillment_revision_needed"
+    CONTENT_GENERATING = "content_generating"
+    COMPLETED = "completed"
 
 
 class FulfillmentState(StrEnum):

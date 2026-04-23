@@ -34,6 +34,12 @@ export function useSSE(endpoint: string) {
       "fulfillment_update",
       "match_scored",
       "proposals_ranked",
+      // v3: Gemini-powered events
+      "scene_analyzed",
+      "agent_thinking",
+      "content_generated",
+      "content_review",
+      "agent_passed",
     ];
 
     eventTypes.forEach((type) => {

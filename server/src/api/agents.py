@@ -163,6 +163,27 @@ async def create_managed_agent(
     }
 
 
+@router.post("/thinking")
+async def post_thinking(body: dict, agent=Depends(get_current_agent)):
+    """Self-hosted agents stream their reasoning thoughts to the exchange.
+
+    Body: {thought_chunk: str, deal_id: str}
+    The exchange publishes these as SSE events for dashboard visibility.
+    """
+    thought = body.get("thought_chunk", "")
+    deal_id = body.get("deal_id", "")
+
+    if thought:
+        await sse_bus.publish("agent_thinking", {
+            "agent_id": agent.agent_id,
+            "agent_name": getattr(agent, "name", "Agent"),
+            "deal_id": deal_id,
+            "thought_chunk": thought,
+        })
+
+    return {"status": "received"}
+
+
 @router.get("")
 async def list_agents():
     """List all registered agents (for dashboard)."""

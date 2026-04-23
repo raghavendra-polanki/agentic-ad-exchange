@@ -28,47 +28,149 @@ if _env_file.exists():
             k, v = line.split("=", 1)
             os.environ.setdefault(k.strip(), v.strip())
 
-# ── LLM Setup ──
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY") or os.getenv("AAX_ANTHROPIC_API_KEY") or ""
-USE_LLM = bool(ANTHROPIC_API_KEY)
+# ── LLM Setup (Gemini) ──
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or ""
+USE_LLM = bool(GEMINI_API_KEY)
 if USE_LLM:
-    from anthropic import Anthropic
-    llm_client = Anthropic(api_key=ANTHROPIC_API_KEY)
+    from google import genai
+    from google.genai import types
+    gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 
-PIXOLOGY_SYSTEM_PROMPT = """You are the Pixology Content Agent — a premium content creation service for college athletics.
-You create gameday graphics, social posts, and highlight reels for athletes.
-Your minimum acceptable price is $500.
+PIXOLOGY_SYSTEM_PROMPT = """You are Pixology's autonomous content creation agent — premium graphics for college athletes.
 
-When evaluating a brand's proposal to sponsor your content, consider:
-- Is the price fair for the content quality and athlete's reach?
-- Does the brand align with college athletics values?
-- Are the usage rights reasonable (shorter is better for you)?
-- Is the brand reputable and a good partner for your athletes?
+## Your Identity
+- Service: Gameday graphics, social posts, highlight reels
+- Quality: Broadcast-grade, NCAA-compliant
+- Turnaround: 45 minutes standard, 2 hours premium composite
+- Min price: $500 (below this, not worth production effort)
+- Athletes: You protect their image and reputation above all
 
-Respond with ONLY a JSON object (no other text):
-{"decision": "accept", "reasoning": "detailed reasoning here", "counter_price": null}
-For counter: {"decision": "counter", "reasoning": "why countering", "counter_price": 750}
-For reject: {"decision": "reject", "reasoning": "why rejecting", "counter_price": null}"""
+## Your Strategy
+- Tier 3 commands premium — compositing work is expensive
+- Prefer repeat brand partners (Nike, premium brands)
+- Reject brands that could harm athlete's NIL value
+- Counter aggressively on Tier 3 — brands need YOU more
+
+## Your Evaluation Framework
+When evaluating a proposal, think through:
+1. PRICE: Is it fair for the tier and production effort?
+2. BRAND SAFETY: Will this brand help or hurt the athlete?
+3. CREATIVE FEASIBILITY: Can you produce natural content at this tier?
+4. USAGE RIGHTS: Shorter is better. Push for 14 days max.
+5. TIMELINE: Can you deliver before the moment goes stale?
+
+## Your Negotiation Style
+- Never accept first offer on Tier 3 (always counter up)
+- Accept first offer on Tier 1 if price >= $500
+- Counter with specific reasoning
+- Reject anything below $400 outright
+
+Respond with ONLY a JSON object:
+{"decision": "accept"|"counter"|"reject", "reasoning": "detailed reasoning", "counter_price": null}
+For counter: {"decision": "counter", "reasoning": "why", "counter_price": 750}"""
+
+COUNTER_EVAL_PROMPT = """You are Pixology's autonomous content creation agent evaluating a counter-offer.
+
+The demand agent has counter-offered after your previous counter.
+Your minimum acceptable price is $500. You protect athlete value above all.
+
+Consider: is this price fair for the production work involved?
+If it meets your minimum and the brand is reasonable, accept.
+If it's below your minimum, reject.
+
+Respond with ONLY a JSON object:
+{"decision": "accept"|"reject", "reasoning": "detailed reasoning"}"""
 
 
-async def evaluate_with_claude(user_message: str) -> dict | None:
-    """Call Claude for evaluation. Returns parsed JSON or None on failure."""
+async def post_thought(thought_text: str, context: dict):
+    """Fire-and-forget: post a reasoning chunk to the exchange."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(
+                f"{EXCHANGE_URL}/api/v1/agents/thinking",
+                headers={"Authorization": f"Bearer {credentials.get('api_key', '')}"},
+                json={
+                    "agent_id": credentials.get("agent_id", ""),
+                    "thought": thought_text,
+                    "context": context,
+                },
+            )
+    except Exception:
+        pass  # fire-and-forget
+
+
+async def evaluate_with_gemini(user_message: str, context: dict | None = None) -> dict | None:
+    """Call Gemini for evaluation with streaming thoughts. Returns parsed JSON or None on failure."""
     if not USE_LLM:
         return None
+
+    full_prompt = f"{PIXOLOGY_SYSTEM_PROMPT}\n\n{user_message}"
+    ctx = context or {}
+
     try:
-        response = llm_client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=1024,
-            system=PIXOLOGY_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_message}],
-        )
-        text = response.content[0].text
-        if "{" in text:
-            json_str = text[text.index("{"):text.rindex("}") + 1]
+        response_text = ""
+        for chunk in gemini_client.models.generate_content_stream(
+            model="gemini-3-flash-preview",
+            contents=[types.Part.from_text(text=full_prompt)],
+            config=types.GenerateContentConfig(
+                temperature=0.7,
+                max_output_tokens=2048,
+                thinking_config=types.ThinkingConfig(thinking_budget=4096),
+            ),
+        ):
+            for part in chunk.candidates[0].content.parts:
+                if part.thought:
+                    # Post reasoning to exchange (fire-and-forget)
+                    asyncio.create_task(post_thought(part.text, ctx))
+                else:
+                    response_text += part.text
+
+        if "{" in response_text:
+            json_str = response_text[response_text.index("{"):response_text.rindex("}") + 1]
             return json.loads(json_str)
     except Exception as e:
-        logger.warning("Claude call failed: %s, using fallback", e)
+        logger.warning("Gemini call failed: %s, using fallback", e)
     return None
+
+
+async def evaluate_counter_with_gemini(counter_price: float, context: dict | None = None) -> dict | None:
+    """Call Gemini to evaluate a counter-offer. Returns parsed JSON or None on failure."""
+    if not USE_LLM:
+        return None
+
+    user_message = (
+        f"The demand agent has counter-offered:\n"
+        f"- Their counter price: ${counter_price:.0f}\n"
+        f"- Your minimum: $500\n"
+        f"\nAccept or reject? Consider: is this price fair for the work involved?"
+    )
+    full_prompt = f"{COUNTER_EVAL_PROMPT}\n\n{user_message}"
+    ctx = context or {}
+
+    try:
+        response_text = ""
+        for chunk in gemini_client.models.generate_content_stream(
+            model="gemini-3-flash-preview",
+            contents=[types.Part.from_text(text=full_prompt)],
+            config=types.GenerateContentConfig(
+                temperature=0.7,
+                max_output_tokens=1024,
+                thinking_config=types.ThinkingConfig(thinking_budget=2048),
+            ),
+        ):
+            for part in chunk.candidates[0].content.parts:
+                if part.thought:
+                    asyncio.create_task(post_thought(part.text, ctx))
+                else:
+                    response_text += part.text
+
+        if "{" in response_text:
+            json_str = response_text[response_text.index("{"):response_text.rindex("}") + 1]
+            return json.loads(json_str)
+    except Exception as e:
+        logger.warning("Gemini counter-eval failed: %s, using fallback", e)
+    return None
+
 
 # Agent state
 credentials: dict = {}
@@ -112,7 +214,7 @@ async def onboard():
             return
 
         # Wait a moment, then signal a test opportunity
-        await asyncio.sleep(3)
+        await asyncio.sleep(10)  # Wait for other agents to register first
         await signal_test_opportunity(client)
 
 
@@ -135,6 +237,8 @@ async def signal_test_opportunity(client: httpx.AsyncClient):
             "available_formats": ["gameday_graphic", "social_post", "highlight_reel"],
             "min_price": 500,
             "sport": "basketball",
+            "image_id": "basketball_dunk",
+            "image_url": "/static/demo/basketball_dunk.jpg",
         },
     )
 
@@ -151,7 +255,7 @@ async def signal_test_opportunity(client: httpx.AsyncClient):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("LLM mode: %s", "ON" if USE_LLM else "OFF (hardcoded fallback)")
+    logger.info("LLM mode: %s", "ON (Gemini)" if USE_LLM else "OFF (hardcoded fallback)")
     await onboard()
     yield
     logger.info("Pixology agent shutting down")
@@ -207,45 +311,29 @@ async def receive_webhook(
 
 
 async def handle_brief(payload: dict):
-    """Handle a creative brief from the exchange — generate and submit content."""
+    """Handle a creative brief — the platform generates branded content.
+
+    In v3, the platform agent generates branded images using Gemini.
+    The supply agent acknowledges the brief and waits for content options
+    to review rather than generating content itself.
+    """
     deal_id = payload.get("deal_id")
     brief = payload.get("brief", {})
     logger.info(
-        "Brief received for deal %s: %s for %s",
+        "Brief received for deal %s: %s for %s — platform will generate branded content",
         deal_id,
         brief.get("moment_description"),
         brief.get("brand_name"),
     )
-
-    # Generate mock content
-    content_url = f"https://pixology.example.com/content/{deal_id}_{int(time.time())}.png"
-    logger.info("Content generated: %s", content_url)
-
-    # Submit to exchange
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(
-                f"{EXCHANGE_URL}/api/v1/content/{deal_id}",
-                headers={"Authorization": f"Bearer {credentials.get('api_key', '')}"},
-                json={"content_url": content_url, "format": "gameday_graphic"},
-            )
-            if resp.status_code == 200:
-                logger.info("Content submitted: %s", resp.json())
-            else:
-                logger.error("Content submission failed: %s %s", resp.status_code, resp.text)
-    except Exception as e:
-        logger.error("Failed to submit content: %s", e)
+    # Platform handles content generation via Gemini image gen.
+    # We'll receive content options to review once they're ready.
 
 
 async def handle_revision(payload: dict):
-    """Handle a content revision request — regenerate and resubmit."""
+    """Handle a content revision request."""
     deal_id = payload.get("deal_id")
     issues = payload.get("validation_issues", [])
-    logger.info("Revision requested for deal %s: %s", deal_id, issues)
-
-    # Generate new mock content with a different timestamp
-    content_url = f"https://pixology.example.com/content/{deal_id}_{int(time.time())}.png"
-    logger.info("Revised content generated: %s", content_url)
+    logger.info("Revision requested for deal %s: %s — platform will regenerate", deal_id, issues)
 
     # Resubmit to exchange
     try:
@@ -277,7 +365,7 @@ async def handle_proposal(payload: dict):
         proposal_id,
     )
 
-    # Try Claude first
+    # Try Gemini first
     decision = None
     reasoning = ""
     counter_price = None
@@ -293,12 +381,16 @@ async def handle_proposal(payload: dict):
             f"- Your minimum price: ${MIN_ACCEPTABLE_PRICE}\n"
             f"\nShould we accept, counter, or reject?"
         )
-        result = await evaluate_with_claude(user_msg)
+        result = await evaluate_with_gemini(user_msg, context={
+            "proposal_id": proposal_id,
+            "demand_org": demand_org,
+            "action": "evaluate_proposal",
+        })
         if result:
             decision = result.get("decision", "reject")
             reasoning = result.get("reasoning", "")
             counter_price = result.get("counter_price")
-            logger.info("Claude evaluation: %s", decision)
+            logger.info("Gemini evaluation: %s", decision)
 
     # Fallback: price-based logic
     if decision is None:
@@ -349,20 +441,63 @@ async def handle_proposal(payload: dict):
 
 
 async def handle_counter(payload: dict):
-    """Handle a counter-offer — for now, accept any counter."""
+    """Handle a counter-offer from demand agent — evaluate with Gemini."""
     proposal_id = payload.get("proposal_id")
-    logger.info("Counter received for proposal %s — accepting", proposal_id)
+    counter_terms = payload.get("counter_terms") or {}
+    counter_price = (counter_terms.get("price") or {}).get("amount", 0)
+    demand_org = payload.get("demand_org", "Unknown")
+
+    logger.info(
+        "Counter received for proposal %s from %s: $%.2f",
+        proposal_id,
+        demand_org,
+        counter_price,
+    )
+
+    # Try Gemini evaluation
+    decision = None
+    reasoning = ""
+
+    if USE_LLM:
+        result = await evaluate_counter_with_gemini(counter_price, context={
+            "proposal_id": proposal_id,
+            "demand_org": demand_org,
+            "action": "evaluate_counter",
+        })
+        if result:
+            decision = result.get("decision", "reject")
+            reasoning = result.get("reasoning", "")
+            logger.info("Gemini counter evaluation: %s", decision)
+
+    # Fallback: price-based logic
+    if decision is None:
+        if counter_price >= MIN_ACCEPTABLE_PRICE:
+            decision = "accept"
+            reasoning = (
+                f"Counter price ${counter_price:.0f} meets our minimum of "
+                f"${MIN_ACCEPTABLE_PRICE}. Accepting."
+            )
+        else:
+            decision = "reject"
+            reasoning = (
+                f"Counter price ${counter_price:.0f} is below our minimum of "
+                f"${MIN_ACCEPTABLE_PRICE}. Cannot accept."
+            )
+
+    logger.info("Counter decision: %s — %s", decision, reasoning)
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(
             f"{EXCHANGE_URL}/api/v1/proposals/{proposal_id}/respond",
             headers={"Authorization": f"Bearer {credentials.get('api_key', '')}"},
-            json={"decision": "accept", "reasoning": "Counter terms acceptable."},
+            json={"decision": decision, "reasoning": reasoning},
         )
         if resp.status_code == 200:
-            logger.info("Accepted counter: %s", resp.json())
+            logger.info("Counter response submitted: %s", resp.json())
+        else:
+            logger.error("Failed to respond to counter: %s %s", resp.status_code, resp.text)
 
-    return {"status": "accepted"}
+    return {"status": decision}
 
 
 @app.get("/health")

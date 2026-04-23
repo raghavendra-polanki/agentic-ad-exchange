@@ -12,6 +12,7 @@ dependencies = [
     "langsmith>=0.3",
     "anthropic>=0.52",
     "openai>=1.70",
+    "google-genai>=1.0",
     "google-cloud-firestore>=2.19",
     "google-cloud-storage>=2.18",
     "firebase-admin>=6.6",
@@ -21,6 +22,9 @@ dependencies = [
     "sse-starlette>=2.2",
     "python-jose[cryptography]>=3.3",
     "passlib[bcrypt]>=1.7",
+    "pillow>=11.0",
+    "aiofiles>=24.1",
+    "python-multipart>=0.0.18",
 ]
 
 [project.optional-dependencies]

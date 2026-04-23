@@ -1,9 +1,14 @@
 """Opportunity signaling and proposal submission API routes."""
 
-from fastapi import APIRouter, Depends, HTTPException
+import json
+import uuid
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from src.api.deps import get_current_agent
 from src.engine.orchestrator import (
+    handle_pass_opportunity,
     handle_select_winner,
     handle_signal_opportunity,
     handle_submit_proposal,
@@ -13,6 +18,8 @@ from src.schemas.proposals import Proposal
 from src.store import store
 
 router = APIRouter()
+
+_STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "static"
 
 
 @router.post("/")
@@ -24,12 +31,41 @@ async def signal_opportunity(
     return await handle_signal_opportunity(agent, signal)
 
 
+@router.post("/with-image")
+async def signal_opportunity_with_image(
+    image: UploadFile = File(...),
+    signal_json: str = Form(...),
+    agent=Depends(get_current_agent),
+):
+    """Supply agent signals an opportunity with an image for scene analysis.
+
+    Accepts multipart/form-data with:
+    - image: the athlete/moment image file
+    - signal_json: JSON string of OpportunitySignal fields
+    """
+    signal = OpportunitySignal(**json.loads(signal_json))
+
+    # Save image locally
+    image_id = uuid.uuid4().hex[:12]
+    ext = image.filename.rsplit(".", 1)[-1] if image.filename and "." in image.filename else "jpg"
+    save_path = _STATIC_DIR / "opportunities" / f"{image_id}.{ext}"
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    save_path.write_bytes(await image.read())
+
+    # Attach image reference to signal
+    signal.image_id = image_id
+    signal.image_url = f"/static/opportunities/{image_id}.{ext}"
+
+    return await handle_signal_opportunity(agent, signal)
+
+
 @router.post("/signal")
 async def signal_from_dashboard(body: dict):
     """Dashboard signals an opportunity on behalf of a supply agent.
 
     No auth required — this is a dashboard convenience endpoint.
     Body: {agent_id: str, signal: OpportunitySignal dict}
+    Optionally include image_url for pre-staged demo images.
     """
     agent_id = body.get("agent_id", "")
     signal_data = body.get("signal", {})
@@ -39,6 +75,13 @@ async def signal_from_dashboard(body: dict):
         raise HTTPException(status_code=404, detail="Supply agent not found")
 
     signal = OpportunitySignal(**signal_data)
+
+    # If image_url points to a demo image, set image_id from filename
+    if signal.image_url and not signal.image_id:
+        img_path = _STATIC_DIR / signal.image_url.lstrip("/static/")
+        if img_path.exists():
+            signal.image_id = img_path.stem
+
     return await handle_signal_opportunity(agent, signal)
 
 
@@ -58,10 +101,15 @@ async def submit_proposal(
 @router.post("/{opportunity_id}/pass")
 async def pass_opportunity(
     opportunity_id: str,
+    body: dict | None = None,
     agent=Depends(get_current_agent),
 ):
-    """Demand agent declines an opportunity."""
-    return {"status": "passed", "opportunity_id": opportunity_id, "agent_id": agent.agent_id}
+    """Demand agent declines an opportunity. Optional body: {"reasoning": str}"""
+    reasoning = (body or {}).get("reasoning", "")
+    result = await handle_pass_opportunity(agent, opportunity_id, reasoning)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Opportunity not found")
+    return result
 
 
 @router.post("/{opportunity_id}/select-winner")

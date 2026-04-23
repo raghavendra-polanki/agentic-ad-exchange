@@ -57,10 +57,21 @@ async def get_deal_trace(deal_id: str):
         if p.opportunity_id == deal.opportunity_id
     ]
 
+    # Include opportunity image and scene analysis if available
+    opp = store.opportunities.get(deal.opportunity_id)
+    opportunity_data = None
+    if opp:
+        opportunity_data = {
+            "image_url": opp.signal.image_url,
+            "image_id": opp.signal.image_id,
+            "scene_analysis": opp.scene_analysis,
+        }
+
     return {
         "deal_id": deal_id,
         "deal": deal.model_dump(mode="json"),
         "events": events,
         "proposals": proposals,
         "agreement": store.deal_results.get(deal_id),
+        "opportunity": opportunity_data,
     }

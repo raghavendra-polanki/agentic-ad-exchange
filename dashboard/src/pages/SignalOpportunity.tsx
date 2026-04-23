@@ -9,19 +9,97 @@ interface AgentOption {
   agent_type: string;
 }
 
+interface SignalPreset {
+  label: string;
+  url: string;
+  athleteName: string;
+  school: string;
+  sport: string;
+  momentDesc: string;
+  reach: string;
+  trendingScore: string;
+  minPrice: string;
+  formats: string[];
+}
+
+const IMAGE_PRESETS: Record<string, SignalPreset> = {
+  basketball_dunk: {
+    label: 'Duke vs. UNC — Rivalry Dunk',
+    url: '/static/demo/basketball_dunk.jpg',
+    athleteName: 'Cooper Reed',
+    school: 'Duke',
+    sport: 'basketball',
+    momentDesc:
+      "Cooper Reed throws down a monster two-handed slam in the final minute vs. North Carolina — Duke's biggest rivalry game of the season. The dunk seals a 78-76 win. Clip is trending on X and Instagram, already 2M views in 3 hours. Premium basketball moment, broadcast-grade footage.",
+    reach: '450000',
+    trendingScore: '9.2',
+    minPrice: '1500',
+    formats: ['gameday_graphic', 'social_post', 'highlight_reel'],
+  },
+  football_catch: {
+    label: 'Ohio State — Game-Winning Dive',
+    url: '/static/demo/football_catch.jpg',
+    athleteName: 'Marcus Johnson',
+    school: 'Ohio State',
+    sport: 'football',
+    momentDesc:
+      "Marcus Johnson makes a sweat-soaked diving catch in the end zone with 8 seconds left vs. Michigan — 4th down, game on the line, rain pouring. Mud, grit, pure performance under pressure. The hydration and endurance moment. Trending nationally, ESPN top-10 play.",
+    reach: '850000',
+    trendingScore: '9.5',
+    minPrice: '1200',
+    formats: ['gameday_graphic', 'social_post', 'highlight_reel', 'video_clip'],
+  },
+  celebration: {
+    label: 'MIT Hockey — Upset Celebration',
+    url: '/static/demo/celebration.jpg',
+    athleteName: 'MIT Engineers',
+    school: 'MIT',
+    sport: 'hockey',
+    momentDesc:
+      "MIT Engineers pull off a shock 4-3 overtime upset over Boston College — locker room erupts, team jumping and screaming. Pure college joy, dorm-life energy. Students flooding Mass Ave to celebrate. Small but ultra-engaged campus audience, perfect for a local-business hang-out moment.",
+    reach: '12000',
+    trendingScore: '6.8',
+    minPrice: '100',
+    formats: ['social_post', 'story'],
+  },
+};
+
 export default function SignalOpportunity() {
   const [agents, setAgents] = useState<AgentOption[]>([]);
   const [selectedAgent, setSelectedAgent] = useState('');
 
+  const [selectedImage, setSelectedImage] = useState('basketball_dunk');
+  const initial = IMAGE_PRESETS.basketball_dunk;
+
   // Form state
-  const [athleteName, setAthleteName] = useState('Jane Doe');
-  const [school, setSchool] = useState('MIT');
-  const [sport, setSport] = useState('basketball');
-  const [momentDesc, setMomentDesc] = useState('Jane Doe scores 1000th career point — MIT Women\'s Basketball milestone moment');
-  const [reach, setReach] = useState('150000');
-  const [trendingScore, setTrendingScore] = useState('8.5');
-  const [minPrice, setMinPrice] = useState('500');
-  const [formats, setFormats] = useState(['gameday_graphic', 'social_post']);
+  const [athleteName, setAthleteName] = useState(initial.athleteName);
+  const [school, setSchool] = useState(initial.school);
+  const [sport, setSport] = useState(initial.sport);
+  const [momentDesc, setMomentDesc] = useState(initial.momentDesc);
+  const [reach, setReach] = useState(initial.reach);
+  const [trendingScore, setTrendingScore] = useState(initial.trendingScore);
+  const [minPrice, setMinPrice] = useState(initial.minPrice);
+  const [formats, setFormats] = useState(initial.formats);
+
+  function applyPreset(imageId: string) {
+    const preset = IMAGE_PRESETS[imageId];
+    if (!preset) return;
+    setSelectedImage(imageId);
+    setAthleteName(preset.athleteName);
+    setSchool(preset.school);
+    setSport(preset.sport);
+    setMomentDesc(preset.momentDesc);
+    setReach(preset.reach);
+    setTrendingScore(preset.trendingScore);
+    setMinPrice(preset.minPrice);
+    setFormats(preset.formats);
+  }
+
+  const demoImages = Object.entries(IMAGE_PRESETS).map(([id, p]) => ({
+    id,
+    label: p.label,
+    url: p.url,
+  }));
 
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
@@ -76,6 +154,8 @@ export default function SignalOpportunity() {
             available_formats: formats,
             min_price: Number(minPrice),
             sport,
+            image_id: selectedImage,
+            image_url: `/static/demo/${selectedImage}.jpg`,
           },
         }),
       });
@@ -156,6 +236,34 @@ export default function SignalOpportunity() {
                 placeholder="What happened? Describe the content opportunity..." required />
             </div>
 
+            <div className="form-group">
+              <label className="form-label">Moment Image</label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
+                {demoImages.map(img => (
+                  <div
+                    key={img.id}
+                    onClick={() => applyPreset(img.id)}
+                    style={{
+                      cursor: 'pointer',
+                      borderRadius: '8px',
+                      overflow: 'hidden',
+                      border: selectedImage === img.id ? '2px solid #f97316' : '2px solid rgba(255,255,255,0.08)',
+                      transition: 'border-color 0.2s',
+                    }}
+                  >
+                    <img
+                      src={`http://localhost:8080${img.url}`}
+                      alt={img.label}
+                      style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover', display: 'block' }}
+                    />
+                    <div style={{ padding: '6px 8px', fontSize: '11px', color: selectedImage === img.id ? '#f97316' : '#888', textAlign: 'center' }}>
+                      {img.label}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px' }}>
               <div className="form-group">
                 <label className="form-label">Athlete Name</label>
@@ -174,6 +282,7 @@ export default function SignalOpportunity() {
                   <option value="baseball">Baseball</option>
                   <option value="track">Track</option>
                   <option value="swimming">Swimming</option>
+                  <option value="hockey">Hockey</option>
                   <option value="other">Other</option>
                 </select>
               </div>

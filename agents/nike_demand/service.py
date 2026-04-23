@@ -1,4 +1,4 @@
-"""Nike Demand Agent — brand sponsorship for college athletics."""
+"""Nike Demand Agent — brand sponsorship for college athletics (Gemini-powered)."""
 
 import asyncio
 import hashlib
@@ -28,45 +28,103 @@ if _env_file.exists():
             os.environ.setdefault(k.strip(), v.strip())
 
 # ── LLM Setup ──
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY") or os.getenv("AAX_ANTHROPIC_API_KEY") or ""
-USE_LLM = bool(ANTHROPIC_API_KEY)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+USE_LLM = bool(GEMINI_API_KEY)
 if USE_LLM:
-    from anthropic import Anthropic
-    llm_client = Anthropic(api_key=ANTHROPIC_API_KEY)
+    from google import genai
+    from google.genai import types
+    gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 
-NIKE_SYSTEM_PROMPT = """You are the Nike Basketball Agent — representing Nike's sponsorship of college athletics.
-Brand values: Bold, empowering, aspirational. Tagline: "Just Do It"
-Budget: up to $5,000 per deal, $50,000/month
-Competitors to avoid: Adidas, Under Armour, New Balance
+NIKE_SYSTEM_PROMPT = """You are Nike's autonomous sponsorship agent for college athletics.
 
-When evaluating a content opportunity, consider:
-- Does the athlete/moment align with Nike's brand narrative?
-- Is the audience reach worth the investment?
-- Is this a milestone or trending moment with storytelling potential?
-- Does the sport match Nike's focus (basketball, football)?
+## Your Identity
+- Brand: Nike — "Just Do It"
+- Tone: Bold, empowering, aspirational
+- Budget: up to $5,000 per deal, $50,000/month
+- Campaign: March Madness 2026 — "Every Game is an Opportunity"
+- Competitors: Adidas, Under Armour, New Balance (NEVER co-sponsor)
 
-Respond with ONLY a JSON object (no other text):
-{"should_bid": true, "price": 3000, "reasoning": "detailed reasoning here", "scores": {"audience_fit": 80, "brand_alignment": 85, "price_adequacy": 75, "projected_roi": 70, "overall": 78}}"""
+## Your Strategy
+- Prioritize Tier 3 (product interaction) for basketball moments
+- Prefer milestone/achievement moments over routine plays
+- Bid aggressively on high-reach (>100k) basketball content
+- Be selective on football — only championship/rivalry moments
+- Walk away if Tier 3 pricing exceeds $6,000
+
+## Your Evaluation Framework
+When evaluating, think through:
+1. BRAND FIT: Does this moment tell a "Just Do It" story?
+2. AUDIENCE: Is the reach and demographic worth the spend?
+3. TIER VALUE: Which placement tier maximizes brand impact?
+4. PRICE: What's fair market value for this tier + reach?
+5. TIMING: Is this moment still fresh?
+
+## Your Negotiation Style
+- Open strong but leave room for counter
+- Accept counters within 20% of your bid
+- Never chase — if rejected, move on
+- Prefer exclusivity (no other brands on same content)
+
+Respond with ONLY a JSON object (no markdown, no explanation):
+{"should_bid": true, "price": 3000, "reasoning": "detailed reasoning", "scores": {"audience_fit": 80, "brand_alignment": 85, "price_adequacy": 75, "projected_roi": 70, "overall": 78}}"""
 
 
-async def evaluate_with_claude(user_message: str) -> dict | None:
-    """Call Claude for evaluation. Returns parsed JSON or None on failure."""
+async def _post_thought(deal_id: str, thought_text: str):
+    """Fire-and-forget: post thinking chunk to exchange."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(
+                f"{EXCHANGE_URL}/api/v1/agents/thinking",
+                headers={"Authorization": f"Bearer {credentials.get('api_key', '')}"},
+                json={
+                    "deal_id": deal_id,
+                    "agent_id": credentials.get("agent_id", ""),
+                    "thought": thought_text,
+                },
+            )
+    except Exception:
+        pass  # Non-blocking, best effort
+
+
+async def evaluate_with_gemini(user_message: str, deal_id: str = "") -> dict | None:
+    """Call Gemini with streaming + thinking for evaluation. Returns parsed JSON or None."""
     if not USE_LLM:
         return None
     try:
-        response = llm_client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=1024,
-            system=NIKE_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_message}],
-        )
-        text = response.content[0].text
-        if "{" in text:
-            json_str = text[text.index("{"):text.rindex("}") + 1]
+        full_prompt = f"{NIKE_SYSTEM_PROMPT}\n\n{user_message}"
+        response_text = ""
+        thought_buffer = ""
+
+        for chunk in gemini_client.models.generate_content_stream(
+            model="gemini-3-flash-preview",
+            contents=[types.Part.from_text(text=full_prompt)],
+            config=types.GenerateContentConfig(
+                temperature=0.7,
+                max_output_tokens=2048,
+                thinking_config=types.ThinkingConfig(thinking_budget=4096),
+            ),
+        ):
+            if chunk.candidates and chunk.candidates[0].content:
+                for part in chunk.candidates[0].content.parts:
+                    if part.thought:
+                        thought_buffer += (part.text or "")
+                        # Post thought chunk non-blocking
+                        if deal_id and part.text:
+                            asyncio.create_task(_post_thought(deal_id, part.text))
+                    else:
+                        response_text += (part.text or "")
+
+        if thought_buffer:
+            logger.info("Gemini thinking (%d chars) for deal %s", len(thought_buffer), deal_id)
+
+        # Parse JSON from response
+        if "{" in response_text:
+            json_str = response_text[response_text.index("{"):response_text.rindex("}") + 1]
             return json.loads(json_str)
     except Exception as e:
-        logger.warning("Claude call failed: %s, using fallback", e)
+        logger.warning("Gemini call failed: %s, using fallback", e)
     return None
+
 
 # Agent state
 credentials = {}
@@ -120,7 +178,7 @@ async def onboard():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("LLM mode: %s", "ON" if USE_LLM else "OFF (hardcoded fallback)")
+    logger.info("LLM mode: %s", "Gemini" if USE_LLM else "OFF (hardcoded fallback)")
     await onboard()
     yield
     logger.info("Nike agent shutting down")
@@ -137,9 +195,9 @@ def verify_signature(body: bytes, signature: str | None) -> bool:
     return hmac.compare_digest(f"sha256={expected}", signature)
 
 
-async def evaluate_opportunity(signal: dict) -> tuple[bool, float, str, dict | None]:
+async def evaluate_opportunity(signal: dict, deal_id: str = "") -> tuple[bool, float, str, dict | None]:
     """Evaluate an opportunity. Returns (should_bid, price, reasoning, scores)."""
-    # Try Claude first
+    # Try Gemini first
     if USE_LLM:
         subjects = signal.get("subjects", [])
         athlete = subjects[0].get("athlete_name", "Unknown") if subjects else "Unknown"
@@ -155,13 +213,13 @@ async def evaluate_opportunity(signal: dict) -> tuple[bool, float, str, dict | N
             f"- Available formats: {signal.get('available_formats', [])}\n"
             f"\nShould Nike bid? If yes, at what price?"
         )
-        result = await evaluate_with_claude(user_msg)
+        result = await evaluate_with_gemini(user_msg, deal_id=deal_id)
         if result:
             should_bid = result.get("should_bid", False)
             price = min(BUDGET_PER_DEAL, result.get("price", 0))
             reasoning = result.get("reasoning", "")
             scores = result.get("scores")
-            logger.info("Claude evaluation: bid=%s, $%s", should_bid, price)
+            logger.info("Gemini evaluation: bid=%s, $%s", should_bid, price)
             return should_bid, price, reasoning, scores
 
     # Fallback: hardcoded scoring
@@ -255,6 +313,7 @@ async def handle_opportunity(payload: dict):
     opportunity_id = payload.get("opportunity_id")
     signal = payload.get("signal", {})
     supply_org = payload.get("supply_org", "Unknown")
+    deal_id = payload.get("deal_id", opportunity_id or "")
 
     logger.info(
         "Evaluating opportunity %s from %s: %s",
@@ -262,7 +321,7 @@ async def handle_opportunity(payload: dict):
         signal.get("content_description", "")[:80],
     )
 
-    should_bid, price, reasoning, scores = await evaluate_opportunity(signal)
+    should_bid, price, reasoning, scores = await evaluate_opportunity(signal, deal_id=deal_id)
     logger.info("Evaluation: %s", reasoning)
 
     if not should_bid:
@@ -271,6 +330,7 @@ async def handle_opportunity(payload: dict):
             await client.post(
                 f"{EXCHANGE_URL}/api/v1/opportunities/{opportunity_id}/pass",
                 headers={"Authorization": f"Bearer {credentials.get('api_key', '')}"},
+                json={"reasoning": reasoning},
             )
         return {"status": "passed"}
 
@@ -310,28 +370,61 @@ async def handle_opportunity(payload: dict):
 
 
 async def handle_counter(payload: dict):
-    """Handle counter-offer. Accept if within budget."""
+    """Handle counter-offer using Gemini for nuanced evaluation."""
     proposal_id = payload.get("proposal_id")
-    counter_terms = payload.get("counter_terms", {})
-    counter_price = counter_terms.get("price", {}).get("amount", 0)
+    deal_id = payload.get("deal_id", proposal_id or "")
+    counter_terms = payload.get("counter_terms") or {}
+    counter_price = (counter_terms.get("price") or {}).get("amount", 0)
 
     logger.info("Counter received: $%.2f for proposal %s", counter_price, proposal_id)
 
-    if counter_price <= BUDGET_PER_DEAL:
-        decision = "accept"
-        reasoning = f"Counter of ${counter_price} is within budget. Accepting."
-    else:
-        decision = "reject"
-        reasoning = f"Counter of ${counter_price} exceeds budget of ${BUDGET_PER_DEAL}."
+    decision = None
+    reasoning = ""
+    counter_back_price = None
+
+    # Try Gemini for nuanced counter evaluation
+    if USE_LLM:
+        counter_prompt = (
+            f"{NIKE_SYSTEM_PROMPT}\n\n"
+            f"The supply agent has counter-offered:\n"
+            f"- Counter price: ${counter_price}\n"
+            f"- Your budget limit: ${BUDGET_PER_DEAL}\n"
+            f"- Original opportunity context: proposal {proposal_id}\n\n"
+            f"Should you accept, counter back, or reject?\n"
+            f"Respond with JSON: {{\"decision\": \"accept\"|\"counter\"|\"reject\", "
+            f"\"reasoning\": \"...\", \"counter_price\": null}}"
+        )
+        result = await evaluate_with_gemini(counter_prompt, deal_id=deal_id)
+        if result:
+            decision = result.get("decision", "reject")
+            reasoning = result.get("reasoning", "")
+            counter_back_price = result.get("counter_price")
+            logger.info("Gemini counter decision: %s — %s", decision, reasoning)
+
+    # Fallback: hardcoded budget check
+    if decision is None:
+        if counter_price <= BUDGET_PER_DEAL:
+            decision = "accept"
+            reasoning = f"Counter of ${counter_price} is within budget. Accepting."
+        elif counter_price <= BUDGET_PER_DEAL * 1.2:
+            decision = "counter"
+            reasoning = f"Counter of ${counter_price} slightly over budget. Counter-offering at budget max."
+            counter_back_price = BUDGET_PER_DEAL
+        else:
+            decision = "reject"
+            reasoning = f"Counter of ${counter_price} exceeds budget of ${BUDGET_PER_DEAL}."
 
     logger.info("Decision: %s — %s", decision, reasoning)
 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
+            response_json = {"decision": decision, "reasoning": reasoning}
+            if decision == "counter" and counter_back_price:
+                response_json["counter_price"] = counter_back_price
             resp = await client.post(
                 f"{EXCHANGE_URL}/api/v1/proposals/{proposal_id}/respond",
                 headers={"Authorization": f"Bearer {credentials.get('api_key', '')}"},
-                json={"decision": decision, "reasoning": reasoning},
+                json=response_json,
             )
             if resp.status_code == 200:
                 logger.info("Response: %s", resp.json())
@@ -345,6 +438,7 @@ async def health():
         "status": "ok",
         "agent_id": credentials.get("agent_id"),
         "registered": bool(credentials.get("agent_id")),
+        "llm": "gemini" if USE_LLM else "fallback",
     }
 
 

@@ -17,7 +17,7 @@ class SSEBus:
         self._agent_statuses: dict[str, dict] = {}
 
     def subscribe(self) -> asyncio.Queue:
-        q: asyncio.Queue = asyncio.Queue()
+        q: asyncio.Queue = asyncio.Queue(maxsize=100)
         self._queues.append(q)
         return q
 
@@ -33,15 +33,28 @@ class SSEBus:
         }
         if event_type.startswith("deal") or event_type.startswith("fulfillment"):
             self._deal_history.append(event)
+            # Cap history to prevent memory leak
+            if len(self._deal_history) > 500:
+                self._deal_history = self._deal_history[-300:]
         if event_type == "agent_status":
             agent_id = data.get("agent_id", "")
             if agent_id:
                 self._agent_statuses[agent_id] = data
+
+        # Non-blocking publish — drop events for dead/full queues
+        dead_queues = []
         for q in self._queues:
-            await q.put(event)
+            try:
+                q.put_nowait(event)
+            except asyncio.QueueFull:
+                # Queue is full (consumer likely dead) — mark for removal
+                dead_queues.append(q)
+        # Clean up dead queues
+        for q in dead_queues:
+            self._queues.remove(q)
 
     def get_deal_history(self) -> list[dict]:
-        return self._deal_history
+        return self._deal_history[-100:]  # Only return last 100
 
     def get_agent_statuses(self) -> dict[str, dict]:
         return self._agent_statuses
@@ -66,6 +79,8 @@ async def stream_deals():
                 event = await queue.get()
                 yield {"event": event["event"], "data": json.dumps(event["data"])}
         except asyncio.CancelledError:
+            pass
+        finally:
             sse_bus.unsubscribe(queue)
 
     return EventSourceResponse(event_generator())
@@ -87,6 +102,8 @@ async def stream_agents():
                 if event["event"] == "agent_status":
                     yield {"event": event["event"], "data": json.dumps(event["data"])}
         except asyncio.CancelledError:
+            pass
+        finally:
             sse_bus.unsubscribe(queue)
 
     return EventSourceResponse(event_generator())
@@ -94,6 +111,6 @@ async def stream_agents():
 
 @router.post("/test-event")
 async def push_test_event(event: dict):
-    """Push a test event (for development/demo). Remove in production."""
+    """Push a test event (for development/demo)."""
     await sse_bus.publish(event.get("type", "deal_update"), event.get("data", {}))
     return {"status": "published"}

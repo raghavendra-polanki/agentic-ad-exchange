@@ -42,3 +42,7 @@ coverage.xml
 # uv
 .python-version
 .claude/worktrees/
+
+# Runtime artifacts (Gemini-generated images, uploaded opportunity images)
+server/static/generated/
+server/static/opportunities/

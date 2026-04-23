@@ -73,3 +73,50 @@ export interface SSEEvent {
   data: unknown;
   timestamp: string;
 }
+
+/* ── v3: Scene Analysis & Thinking ── */
+
+export interface BrandZone {
+  zone_id: string;
+  description: string;
+  tier: number;
+  placement_type: string;
+  feasibility: string;
+  natural_fit_score: number;
+}
+
+export interface SceneAnalysis {
+  scene_type: string;
+  mood: string;
+  sport: string;
+  athlete_visibility: Record<string, boolean>;
+  brand_zones: BrandZone[];
+  categories: string[];
+  pricing_guidance: Record<string, number[]>;
+  creative_notes: string;
+}
+
+export interface AgentThinkingEvent {
+  agent_id: string;
+  agent_name: string;
+  deal_id: string;
+  thought_chunk: string;
+  timestamp?: string;
+}
+
+export interface ContentOption {
+  option_id: number;
+  image_url: string | null;
+  style: string;
+  description: string;
+  placeholder?: boolean;
+}
+
+export interface ContentReviewEvent {
+  deal_id: string;
+  agent_id: string;
+  agent_name: string;
+  option_id: number;
+  decision: 'approve' | 'reject';
+  reasoning: string;
+}

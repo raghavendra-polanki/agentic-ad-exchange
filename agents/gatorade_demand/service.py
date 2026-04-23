@@ -2,11 +2,14 @@
 
 Demonstrates conflict blocking: the exchange will reject proposals when an
 athlete already has a competing NIL deal (e.g. BodyArmor).
+
+Uses Gemini for LLM reasoning with streaming thoughts.
 """
 
 import asyncio
 import hashlib
 import hmac
+import json
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -20,6 +23,52 @@ logging.basicConfig(level=logging.INFO, format="%(name)s | %(message)s")
 EXCHANGE_URL = os.getenv("AAX_EXCHANGE_URL", "http://localhost:8080")
 ORG_KEY = os.getenv("AAX_ORG_KEY", "aax_org_gatorade_12345")
 AGENT_PORT = int(os.getenv("AGENT_PORT", "8083"))
+
+# ── Load .env from project root ──
+from pathlib import Path
+_env_file = Path(__file__).resolve().parent.parent.parent / "server" / ".env"
+if _env_file.exists():
+    for line in _env_file.read_text().splitlines():
+        if "=" in line and not line.startswith("#"):
+            k, v = line.split("=", 1)
+            os.environ.setdefault(k.strip(), v.strip())
+
+# ── LLM Setup (Gemini) ──
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or ""
+USE_LLM = bool(GEMINI_API_KEY)
+if USE_LLM:
+    from google import genai
+    from google.genai import types
+    llm_client = genai.Client(api_key=GEMINI_API_KEY)
+
+GATORADE_SYSTEM_PROMPT = """You are Gatorade's autonomous sponsorship agent for college athletics.
+
+## Your Identity
+- Brand: Gatorade — "Is It In You?"
+- Tone: Energetic, performance-focused, authentic
+- Budget: up to $3,000 per deal, $25,000/month
+- Competitors: BodyArmor, Powerade, Prime Hydration (NEVER co-sponsor)
+
+## Your Strategy
+- Focus on performance-driven moments (records, comebacks, peak achievement)
+- Basketball and football are primary sports
+- Hydration/energy moments are perfect (post-game, training, halftime)
+- Walk away from lifestyle/ceremony moments (not brand-aligned)
+
+## Your Evaluation Framework
+1. PERFORMANCE FIT: Is this a peak athletic performance moment?
+2. HYDRATION RELEVANCE: Can hydration/energy be naturally placed?
+3. AUDIENCE: Is reach > 30k in target demographics?
+4. PRICE: Keep under $3,000 — Gatorade is disciplined
+5. COMPETITION: Any conflict with BodyArmor/Powerade NIL deals?
+
+## Negotiation Style
+- Moderate bidder — not aggressive like Nike
+- Accept if price is fair, don't over-negotiate
+- Reject quickly if moment doesn't fit (save budget for better ones)
+
+Respond with ONLY JSON:
+{"should_bid": true, "price": 1500, "reasoning": "...", "scores": {"audience_fit": 75, "brand_alignment": 80, "price_adequacy": 70, "projected_roi": 65, "overall": 72}}"""
 
 # Agent state
 credentials = {}
@@ -35,57 +84,50 @@ BRAND_PROFILE = {
     "competitor_exclusions": ["BodyArmor", "Powerade", "Prime Hydration"],
 }
 
-# ── Load .env from project root ──
-from pathlib import Path
-_env_file = Path(__file__).resolve().parent.parent.parent / "server" / ".env"
-if _env_file.exists():
-    for line in _env_file.read_text().splitlines():
-        if "=" in line and not line.startswith("#"):
-            k, v = line.split("=", 1)
-            os.environ.setdefault(k.strip(), v.strip())
 
-# Claude reasoning support
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY") or os.getenv("AAX_ANTHROPIC_API_KEY") or ""
-SYSTEM_PROMPT = (
-    "You are the Gatorade Sports Agent — representing Gatorade's sponsorship of college athletics.\n"
-    'Brand: "Is It In You?" — energetic, performance-focused, authentic.\n'
-    "Budget: up to $3,000 per deal.\n"
-    "Competitors: BodyArmor, Powerade, Prime Hydration — NEVER sponsor alongside these.\n"
-    "Focus: performance-driven moments — records, comebacks, peak athletic achievement."
-)
+async def post_thinking(thought_chunk: str, deal_id: str | None = None):
+    """Post agent thinking to the exchange for dashboard visibility."""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            await client.post(
+                f"{EXCHANGE_URL}/api/v1/agents/thinking",
+                headers={"Authorization": f"Bearer {credentials.get('api_key', '')}"},
+                json={"thought_chunk": thought_chunk, "deal_id": deal_id},
+            )
+    except Exception as e:
+        logger.debug("Failed to post thinking: %s", e)
 
 
-async def get_llm_reasoning(signal: dict, score: int, price: float) -> str | None:
-    """Ask Claude for reasoning on the opportunity, if API key is set."""
-    if not ANTHROPIC_API_KEY:
+async def evaluate_with_gemini(user_message: str, deal_id: str | None = None) -> dict | None:
+    """Call Gemini for evaluation with streaming thoughts. Returns parsed JSON or None."""
+    if not USE_LLM:
         return None
     try:
-        import anthropic
+        full_prompt = f"{GATORADE_SYSTEM_PROMPT}\n\n{user_message}"
+        response_text = ""
 
-        client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
-        resp = await client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=300,
-            system=SYSTEM_PROMPT,
-            messages=[
-                {
-                    "role": "user",
-                    "content": (
-                        f"Evaluate this sponsorship opportunity for Gatorade.\n"
-                        f"Sport: {signal.get('sport', 'unknown')}\n"
-                        f"Description: {signal.get('content_description', 'N/A')}\n"
-                        f"Reach: {signal.get('audience', {}).get('projected_reach', 0):,}\n"
-                        f"Trending: {signal.get('audience', {}).get('trending_score', 0)}\n"
-                        f"Our score: {score}/100, proposed price: ${price:.0f}\n\n"
-                        f"Give a 2-sentence take on whether this fits Gatorade's brand."
-                    ),
-                }
-            ],
-        )
-        return resp.content[0].text
+        for chunk in llm_client.models.generate_content_stream(
+            model="gemini-3-flash-preview",
+            contents=[types.Part.from_text(text=full_prompt)],
+            config=types.GenerateContentConfig(
+                temperature=0.7,
+                max_output_tokens=2048,
+                thinking_config=types.ThinkingConfig(thinking_budget=4096),
+            ),
+        ):
+            for part in chunk.candidates[0].content.parts:
+                if part.thought:
+                    await post_thinking(part.text, deal_id)
+                else:
+                    response_text += part.text
+
+        # Parse JSON from response
+        if "{" in response_text:
+            json_str = response_text[response_text.index("{"):response_text.rindex("}") + 1]
+            return json.loads(json_str)
     except Exception as e:
-        logger.warning("LLM reasoning failed: %s", e)
-        return None
+        logger.warning("Gemini call failed: %s, using fallback", e)
+    return None
 
 
 async def onboard():
@@ -125,6 +167,7 @@ async def onboard():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    logger.info("LLM mode: %s", "Gemini ON" if USE_LLM else "OFF (hardcoded fallback)")
     await onboard()
     yield
     logger.info("Gatorade agent shutting down")
@@ -141,8 +184,34 @@ def verify_signature(body: bytes, signature: str | None) -> bool:
     return hmac.compare_digest(f"sha256={expected}", signature)
 
 
-def evaluate_opportunity(signal: dict) -> tuple[bool, float, str]:
-    """Evaluate an opportunity. Returns (should_bid, price, reasoning)."""
+async def evaluate_opportunity(signal: dict, deal_id: str | None = None) -> tuple[bool, float, str, dict | None]:
+    """Evaluate an opportunity. Returns (should_bid, price, reasoning, scores)."""
+    # Try Gemini first
+    if USE_LLM:
+        subjects = signal.get("subjects", [])
+        athlete = subjects[0].get("athlete_name", "Unknown") if subjects else "Unknown"
+        school = subjects[0].get("school", "") if subjects else ""
+        user_msg = (
+            f"Evaluate this content opportunity for Gatorade:\n"
+            f"- Athlete: {athlete} ({school})\n"
+            f"- Sport: {signal.get('sport', 'unknown')}\n"
+            f"- Moment: {signal.get('content_description', '')}\n"
+            f"- Audience reach: {signal.get('audience', {}).get('projected_reach', 0):,}\n"
+            f"- Trending score: {signal.get('audience', {}).get('trending_score', 0)}\n"
+            f"- Min price: ${signal.get('min_price', 0)}\n"
+            f"- Available formats: {signal.get('available_formats', [])}\n"
+            f"\nShould Gatorade bid? If yes, at what price (max $3,000)?"
+        )
+        result = await evaluate_with_gemini(user_msg, deal_id)
+        if result:
+            should_bid = result.get("should_bid", False)
+            price = min(BUDGET_PER_DEAL, result.get("price", 0))
+            reasoning = result.get("reasoning", "")
+            scores = result.get("scores")
+            logger.info("Gemini evaluation: bid=%s, $%s", should_bid, price)
+            return should_bid, price, reasoning, scores
+
+    # Fallback: hardcoded scoring
     audience = signal.get("audience", {})
     reach = audience.get("projected_reach", 0)
     sport = signal.get("sport", "")
@@ -196,7 +265,15 @@ def evaluate_opportunity(signal: dict) -> tuple[bool, float, str]:
     else:
         reasoning += " → Passing (below threshold)"
 
-    return should_bid, price, reasoning
+    scores_dict = {
+        "audience_fit": min(100, int(reach / 2000)),
+        "brand_alignment": 80 if sport in ("basketball", "football") else 40,
+        "price_adequacy": 70,
+        "projected_roi": min(100, int(trending * 10)) if trending else 50,
+        "overall": score,
+    }
+
+    return should_bid, price, reasoning, scores_dict
 
 
 @app.post("/webhook")
@@ -256,13 +333,7 @@ async def handle_opportunity(payload: dict):
         signal.get("content_description", "")[:80],
     )
 
-    should_bid, price, reasoning = evaluate_opportunity(signal)
-
-    # Optionally enhance reasoning with Claude
-    llm_reasoning = await get_llm_reasoning(signal, int(price / BUDGET_PER_DEAL * 100), price)
-    if llm_reasoning:
-        reasoning += f" | Claude: {llm_reasoning}"
-
+    should_bid, price, reasoning, scores = await evaluate_opportunity(signal, opportunity_id)
     logger.info("Evaluation: %s", reasoning)
 
     if not should_bid:
@@ -270,42 +341,46 @@ async def handle_opportunity(payload: dict):
             await client.post(
                 f"{EXCHANGE_URL}/api/v1/opportunities/{opportunity_id}/pass",
                 headers={"Authorization": f"Bearer {credentials.get('api_key', '')}"},
+                json={"reasoning": reasoning},
             )
         return {"status": "passed"}
 
     # Submit proposal
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.post(
-            f"{EXCHANGE_URL}/api/v1/opportunities/{opportunity_id}/propose",
-            headers={"Authorization": f"Bearer {credentials.get('api_key', '')}"},
-            json={
-                "deal_terms": {
-                    "price": {"amount": price, "currency": "USD"},
-                    "content_format": "gameday_graphic",
-                    "platforms": ["instagram", "twitter"],
-                    "usage_rights_duration_days": 14,
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                f"{EXCHANGE_URL}/api/v1/opportunities/{opportunity_id}/propose",
+                headers={"Authorization": f"Bearer {credentials.get('api_key', '')}"},
+                json={
+                    "deal_terms": {
+                        "price": {"amount": price, "currency": "USD"},
+                        "content_format": "gameday_graphic",
+                        "platforms": ["instagram", "twitter"],
+                        "usage_rights_duration_days": 14,
+                    },
+                    "reasoning": reasoning,
+                    "scores": scores or {
+                        "audience_fit": 75,
+                        "brand_alignment": 80,
+                        "price_adequacy": 70,
+                        "projected_roi": 65,
+                        "overall": 72,
+                    },
                 },
-                "reasoning": reasoning,
-                "scores": {
-                    "audience_fit": 75,
-                    "brand_alignment": 80,
-                    "price_adequacy": 70,
-                    "projected_roi": 65,
-                    "overall": 72,
-                },
-            },
-        )
+            )
 
-        if resp.status_code == 200:
-            data = resp.json()
-            logger.info("Proposal submitted: %s", data)
-            if data.get("status") == "conflict_blocked":
-                logger.warning(
-                    "CONFLICT BLOCKED at submission: %s",
-                    data.get("reason", "competitor exclusion detected"),
-                )
-        else:
-            logger.error("Proposal failed: %s %s", resp.status_code, resp.text)
+            if resp.status_code == 200:
+                data = resp.json()
+                logger.info("Proposal submitted: %s", data)
+                if data.get("status") == "conflict_blocked":
+                    logger.warning(
+                        "CONFLICT BLOCKED at submission: %s",
+                        data.get("reason", "competitor exclusion detected"),
+                    )
+            else:
+                logger.error("Proposal failed: %s %s", resp.status_code, resp.text)
+    except Exception as e:
+        logger.error("Failed to submit proposal: %s", e)
 
     return {"status": "proposed", "price": price}
 
@@ -313,8 +388,8 @@ async def handle_opportunity(payload: dict):
 async def handle_counter(payload: dict):
     """Handle counter-offer. Accept if within budget."""
     proposal_id = payload.get("proposal_id")
-    counter_terms = payload.get("counter_terms", {})
-    counter_price = counter_terms.get("price", {}).get("amount", 0)
+    counter_terms = payload.get("counter_terms") or {}
+    counter_price = (counter_terms.get("price") or {}).get("amount", 0)
 
     logger.info("Counter received: $%.2f for proposal %s", counter_price, proposal_id)
 
@@ -327,14 +402,17 @@ async def handle_counter(payload: dict):
 
     logger.info("Decision: %s — %s", decision, reasoning)
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.post(
-            f"{EXCHANGE_URL}/api/v1/proposals/{proposal_id}/respond",
-            headers={"Authorization": f"Bearer {credentials.get('api_key', '')}"},
-            json={"decision": decision, "reasoning": reasoning},
-        )
-        if resp.status_code == 200:
-            logger.info("Response: %s", resp.json())
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                f"{EXCHANGE_URL}/api/v1/proposals/{proposal_id}/respond",
+                headers={"Authorization": f"Bearer {credentials.get('api_key', '')}"},
+                json={"decision": decision, "reasoning": reasoning},
+            )
+            if resp.status_code == 200:
+                logger.info("Response: %s", resp.json())
+    except Exception as e:
+        logger.error("Failed to respond to counter: %s", e)
 
     return {"status": decision}
 
@@ -346,6 +424,7 @@ async def health():
         "agent": "Gatorade",
         "agent_id": credentials.get("agent_id"),
         "registered": bool(credentials.get("agent_id")),
+        "llm": "gemini" if USE_LLM else "fallback",
     }
 
 

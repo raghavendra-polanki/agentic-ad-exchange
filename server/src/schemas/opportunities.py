@@ -41,6 +41,9 @@ class OpportunitySignal(BaseModel):
     expiry: datetime | None = None
     min_price: float = 0.0
     sport: Sport = Sport.BASKETBALL
+    # Image-based opportunity (v3)
+    image_id: str | None = None
+    image_url: str | None = None
 
 
 class OpportunityRecord(BaseModel):
@@ -53,6 +56,8 @@ class OpportunityRecord(BaseModel):
     status: OpportunityStatus = OpportunityStatus.ACTIVE
     matched_demand_agents: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    # Scene analysis (v3) — populated by platform agent after image analysis
+    scene_analysis: dict | None = None
 
 
 class OpportunityNotification(BaseModel):
