@@ -214,3 +214,25 @@ async def health():
         "service": "aax-exchange",
         "gemini_available": gemini.available,
     }
+
+
+# ── Dashboard SPA (must be defined LAST so API/static routes take precedence) ──
+
+from fastapi.responses import FileResponse
+from fastapi import HTTPException
+
+_DASHBOARD_DIST = Path(__file__).parent.parent.parent / "dashboard" / "dist"
+if _DASHBOARD_DIST.exists():
+    _DASHBOARD_ASSETS = _DASHBOARD_DIST / "assets"
+    if _DASHBOARD_ASSETS.exists():
+        app.mount("/assets", StaticFiles(directory=str(_DASHBOARD_ASSETS)), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def spa_fallback(full_path: str):
+        # Don't catch API/protocol/static routes — those are served above.
+        if full_path.startswith(("api/", "static/", "protocol", "health", "assets/")):
+            raise HTTPException(status_code=404)
+        index = _DASHBOARD_DIST / "index.html"
+        if not index.exists():
+            raise HTTPException(status_code=404, detail="Dashboard build missing")
+        return FileResponse(index)

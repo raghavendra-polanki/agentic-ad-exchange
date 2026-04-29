@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { ExchangeStatsData } from '../types';
 
-const API_BASE = 'http://localhost:8080';
+const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8080';
 
 export default function ExchangeStats() {
   const [stats, setStats] = useState<ExchangeStatsData>({

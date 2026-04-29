@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-const API_BASE = 'http://localhost:8080';
+const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8080';
 
 interface AgentOption {
   agent_id: string;
@@ -252,7 +252,7 @@ export default function SignalOpportunity() {
                     }}
                   >
                     <img
-                      src={`http://localhost:8080${img.url}`}
+                      src={`${API_BASE}${img.url}`}
                       alt={img.label}
                       style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover', display: 'block' }}
                     />

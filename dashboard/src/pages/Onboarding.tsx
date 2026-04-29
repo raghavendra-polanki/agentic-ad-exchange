@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { OrgCredentials } from '../types';
 
-const API_BASE = 'http://localhost:8080';
+const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8080';
 
 const CONTENT_FORMATS = [
   { value: 'gameday_graphic', label: 'Gameday Graphic' },

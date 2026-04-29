@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import type { SSEEvent } from "../types";
 
-const API_BASE =
-  import.meta.env.VITE_API_BASE || "http://localhost:8080/api/v1";
+const API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8080";
 
 export function useSSE(endpoint: string) {
   const [events, setEvents] = useState<SSEEvent[]>([]);
@@ -10,7 +9,7 @@ export function useSSE(endpoint: string) {
   const eventSourceRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
-    const url = `${API_BASE}/stream/${endpoint}`;
+    const url = `${API_BASE}/api/v1/stream/${endpoint}`;
     const es = new EventSource(url);
     eventSourceRef.current = es;
 

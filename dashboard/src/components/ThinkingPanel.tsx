@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import type { AgentThinkingEvent } from "../types";
 
-const API_BASE =
-  import.meta.env.VITE_API_BASE || "http://localhost:8080/api/v1";
+const API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8080";
 
 interface ThinkingPanelProps {
   dealId: string;
@@ -53,7 +52,7 @@ export default function ThinkingPanel({
 
   // Subscribe to live SSE thoughts
   useEffect(() => {
-    const url = `${API_BASE}/stream/deals`;
+    const url = `${API_BASE}/api/v1/stream/deals`;
     const es = new EventSource(url);
     esRef.current = es;
 
