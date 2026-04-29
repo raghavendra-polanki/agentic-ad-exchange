@@ -28,6 +28,7 @@ interface DealTrace {
   proposals: Array<{ proposal_id: string; demand_org: string; scores?: { audience_fit: number; brand_alignment: number; price_adequacy: number; projected_roi: number; overall: number } }>;
   agreement?: Record<string, unknown>;
   opportunity?: {
+    image_id?: string;
     image_url?: string;
     scene_analysis?: {
       scene_type: string; mood: string; sport: string;

@@ -33,7 +33,7 @@ export default function ThinkingPanel({
   const [isThinking, setIsThinking] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const esRef = useRef<EventSource | null>(null);
-  const thinkingTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const thinkingTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Load historical thoughts from deal events
   useEffect(() => {
