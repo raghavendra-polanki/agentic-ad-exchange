@@ -197,7 +197,49 @@ async def handle_signal_opportunity(
     agent: SupplyAgentProfile,
     signal: OpportunitySignal,
 ) -> dict:
-    """Supply agent signals a new opportunity. Runs pre-screen, creates deal."""
+    """Supply agent signals a new opportunity. Runs pre-screen, creates deal.
+
+    Before creating the opportunity, verify the supply agent has an active
+    delegation grant for each named athlete. Signals for athletes without
+    a covering grant are rejected at the platform — the opportunity is
+    never listed.
+    """
+    # Delegation check (NIL provenance) — only enforced for athletes that
+    # exist in the seeded roster. Unknown athletes pass with a warning so
+    # the demo's image-driven flow keeps working.
+    for subject in signal.subjects:
+        athlete = store.find_athlete(name=subject.athlete_name, school=subject.school)
+        if athlete is None:
+            logger.warning(
+                "Signal references unseeded athlete %r — accepting without delegation check",
+                subject.athlete_name,
+            )
+            continue
+        grant = store.find_active_delegation(athlete.athlete_id, agent.agent_id)
+        sport = subject.sport.value if hasattr(subject.sport, "value") else str(subject.sport)
+        if not grant or not grant.covers(sport=sport):
+            await sse_bus.publish("delegation_rejected", {
+                "athlete": athlete.name,
+                "athlete_id": athlete.athlete_id,
+                "supply_agent": agent.organization,
+                "supply_agent_id": agent.agent_id,
+                "sport": sport,
+                "reason": (
+                    "No active delegation" if not grant else f"Active delegation does not cover sport={sport}"
+                ),
+                "timestamp": datetime.now(UTC).isoformat(),
+            })
+            return {
+                "status": "rejected",
+                "reason": "no_active_delegation",
+                "athlete": athlete.name,
+                "supply_agent": agent.organization,
+                "detail": (
+                    f"Supply agent {agent.organization} has no active delegation "
+                    f"to monetize {athlete.name} ({sport})."
+                ),
+            }
+
     opp = store.create_opportunity(agent.agent_id, agent.organization, signal)
 
     demand_agents = store.get_demand_agents()
@@ -324,6 +366,132 @@ async def handle_pass_opportunity(
         "reasoning": reasoning,
         "timestamp": ts,
     })
+
+
+async def pause_deal_for_approval(
+    deal_id: str,
+    demand_agent_id: str,
+    demand_org: str,
+    price: int,
+    threshold: int,
+    reasoning: str,
+    pending_action: dict,
+) -> None:
+    """Park a deal in AWAITING_HUMAN_APPROVAL with a deferred action.
+
+    Called by the managed agent's _handle_opportunity when the bid amount
+    exceeds the brand's auto_approve_threshold_usd. The dashboard surfaces
+    an approve/reject banner; the deferred action fires on approve.
+    """
+    store.update_deal(deal_id, state=DealState.AWAITING_HUMAN_APPROVAL)
+    store.pending_approvals[deal_id] = pending_action
+    ts = datetime.now(UTC).isoformat()
+
+    store.add_deal_event(deal_id, {
+        "type": "human_approval_needed",
+        "actor": demand_org,
+        "actor_type": "demand",
+        "agent_id": demand_agent_id,
+        "price": price,
+        "threshold": threshold,
+        "reasoning": reasoning,
+        "timestamp": ts,
+    })
+    await sse_bus.publish("human_approval_needed", {
+        "deal_id": deal_id,
+        "agent_id": demand_agent_id,
+        "actor": demand_org,
+        "price": price,
+        "threshold": threshold,
+        "reasoning": reasoning,
+        "timestamp": ts,
+    })
+    logger.info(
+        "Deal %s paused for approval: %s would bid $%s (threshold $%s)",
+        deal_id, demand_org, price, threshold,
+    )
+
+
+async def resume_approved_deal(deal_id: str) -> dict | None:
+    """Approve a paused deal — execute the deferred action and resume.
+
+    Returns the result of the deferred action (e.g. proposal submission)
+    or None if the deal isn't paused.
+    """
+    pending = store.pending_approvals.pop(deal_id, None)
+    deal = store.deals.get(deal_id)
+    if not pending or not deal:
+        return None
+    if deal.state != DealState.AWAITING_HUMAN_APPROVAL:
+        return None
+
+    ts = datetime.now(UTC).isoformat()
+    store.add_deal_event(deal_id, {
+        "type": "human_approved",
+        "actor": "Human",
+        "actor_type": "human",
+        "price": pending.get("price"),
+        "timestamp": ts,
+    })
+    await sse_bus.publish("human_approved", {
+        "deal_id": deal_id,
+        "price": pending.get("price"),
+        "timestamp": ts,
+    })
+
+    # Resume the deferred action
+    if pending.get("kind") == "submit_proposal":
+        import httpx
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(
+                    f"http://localhost:8080/api/v1/opportunities/{pending['opp_id']}/propose",
+                    headers={"Authorization": f"Bearer {pending['api_key']}"},
+                    json={
+                        "deal_terms": {
+                            "price": {"amount": pending["price"], "currency": "USD"},
+                            "content_format": "gameday_graphic",
+                            "platforms": ["instagram", "twitter"],
+                            "usage_rights_duration_days": 30,
+                        },
+                        "reasoning": pending["reasoning"],
+                        "scores": pending.get("scores", {"overall": 70}),
+                    },
+                )
+                logger.info("Resumed proposal post for %s: %s", deal_id, resp.status_code)
+                return {"status": "resumed", "http_status": resp.status_code}
+        except Exception as e:
+            logger.error("Resume failed for %s: %s", deal_id, e)
+            return {"status": "resume_failed", "error": str(e)}
+
+    return {"status": "approved", "action_kind": pending.get("kind")}
+
+
+async def reject_paused_deal(deal_id: str, reason: str | None = None) -> dict | None:
+    """Reject a paused deal — close it without firing the deferred action."""
+    pending = store.pending_approvals.pop(deal_id, None)
+    deal = store.deals.get(deal_id)
+    if not deal:
+        return None
+    if deal.state != DealState.AWAITING_HUMAN_APPROVAL:
+        return None
+
+    ts = datetime.now(UTC).isoformat()
+    store.update_deal(deal_id, state=DealState.DEAL_REJECTED)
+    store.add_deal_event(deal_id, {
+        "type": "human_rejected",
+        "actor": "Human",
+        "actor_type": "human",
+        "reasoning": reason or "Rejected by human reviewer",
+        "timestamp": ts,
+    })
+    await sse_bus.publish("deal_rejected", {
+        "deal_id": deal_id,
+        "reason": "human_rejected",
+        "detail": reason or "",
+        "timestamp": ts,
+    })
+    return {"status": "rejected", "deal_id": deal_id}
 
     return {
         "status": "passed",

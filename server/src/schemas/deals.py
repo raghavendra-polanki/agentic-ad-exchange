@@ -19,6 +19,7 @@ class DealState(StrEnum):
     FINAL_CONFLICT_CHECK = "final_conflict_check"
     AWAITING_SUPPLY_EVAL = "awaiting_supply_evaluation"
     NEGOTIATING = "negotiating"
+    AWAITING_HUMAN_APPROVAL = "awaiting_human_approval"
     DEAL_AGREED = "deal_agreed"
     DEAL_REJECTED = "deal_rejected"
     DEAL_EXPIRED = "deal_expired"

@@ -220,6 +220,42 @@ export default function DealDetail() {
         </div>
       </div>
 
+      {/* ── Approval banner — shown only when deal is awaiting human approval ── */}
+      {deal.state === 'awaiting_human_approval' && (() => {
+        const pendingEv = [...events].reverse().find(e => e.type === 'human_approval_needed');
+        const pendingPrice = (pendingEv as { price?: number } | undefined)?.price;
+        const threshold = (pendingEv as { threshold?: number } | undefined)?.threshold;
+        const reason = (pendingEv as { reasoning?: string } | undefined)?.reasoning;
+        return (
+          <div className="approval-banner">
+            <div className="approval-banner__icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            </div>
+            <div className="approval-banner__body">
+              <div className="approval-banner__title">Approval needed</div>
+              <div className="approval-banner__detail">
+                {pendingEv?.actor || deal.demand_org}'s auto-approve threshold is ${threshold?.toLocaleString() || '?'}.{' '}
+                This bid would land at <strong>${pendingPrice?.toLocaleString() || '?'}</strong> — paused for human review.
+              </div>
+              {reason && <div className="approval-banner__reasoning">"{reason}"</div>}
+            </div>
+            <div className="approval-banner__actions">
+              <button className="btn btn-primary" onClick={async () => {
+                await fetch(`${API_BASE}/api/v1/deals/${dealId}/approve`, { method: 'POST' });
+              }}>Approve</button>
+              <button className="btn btn-secondary" onClick={async () => {
+                const reason = prompt('Reason for rejecting (optional):') || undefined;
+                await fetch(`${API_BASE}/api/v1/deals/${dealId}/reject`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ reason }),
+                });
+              }}>Reject</button>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ── MAIN: Three columns — image/analysis | thread | generated ── */}
       <div className={`deal-v3__main ${generatedOptions.length > 0 ? 'deal-v3__main--3col' : ''}`}>
 
@@ -387,6 +423,39 @@ export default function DealDetail() {
                   <div className="tv3__body">
                     <div className="tv3__head"><b>Validator</b> {((ev.score??0)*100).toFixed(0)}% <span className="tv3__time">{ts(ev.timestamp)}</span></div>
                     {ev.checks && <div className="t-val-checks">{Object.entries(ev.checks).map(([k,v]) => <span key={k} className={`t-val-check ${v?'pass':'fail'}`}>{v?'\u2713':'\u2717'} {k.replace(/_/g,' ')}</span>)}</div>}
+                  </div>
+                </div>
+              );
+
+              // Awaiting human approval (thread-level entry, in addition to top-of-page banner)
+              if (ev.type === 'human_approval_needed') return (
+                <div key={i} className={tv3cls} style={tv3style}>
+                  <div className="tv3__av" style={{background:'#f59e0b'}}>!</div>
+                  <div className="tv3__body">
+                    <div className="tv3__head"><b>{ev.actor}</b> <span className="tv3__badge" style={{background:'rgba(245,158,11,0.15)',color:'#f59e0b'}}>AWAITING APPROVAL</span> <span className="tv3__time">{ts(ev.timestamp)}</span></div>
+                    <div className="tv3__text">
+                      Bid of <strong>${(ev as { price?: number }).price?.toLocaleString()}</strong> exceeds auto-approve threshold of ${(ev as { threshold?: number }).threshold?.toLocaleString()}.
+                    </div>
+                    {ev.reasoning && <div className="tv3__reasoning">{ev.reasoning}</div>}
+                  </div>
+                </div>
+              );
+
+              if (ev.type === 'human_approved') return (
+                <div key={i} className={tv3cls} style={tv3style}>
+                  <div className="tv3__av" style={{background:'var(--green)'}}>&#10003;</div>
+                  <div className="tv3__body">
+                    <div className="tv3__head"><b>Human</b> <span className="tv3__badge tv3__badge--accept">APPROVED</span> <span className="tv3__time">{ts(ev.timestamp)}</span></div>
+                  </div>
+                </div>
+              );
+
+              if (ev.type === 'human_rejected') return (
+                <div key={i} className={tv3cls} style={tv3style}>
+                  <div className="tv3__av" style={{background:'var(--red)'}}>&#10005;</div>
+                  <div className="tv3__body">
+                    <div className="tv3__head"><b>Human</b> <span className="tv3__badge tv3__badge--reject">REJECTED</span> <span className="tv3__time">{ts(ev.timestamp)}</span></div>
+                    {ev.reasoning && <div className="tv3__text">{ev.reasoning}</div>}
                   </div>
                 </div>
               );

@@ -360,6 +360,30 @@ For reject: {{"decision": "reject", "reasoning": "why rejecting", "counter_price
             reasoning = "Automated bid from managed agent"
             scores = {"overall": 60}
 
+        # Auto-approve gate: if the brand's threshold is below the bid amount,
+        # pause for human review instead of submitting the proposal directly.
+        rules = store.get_brand_rules(self.agent_id)
+        threshold = rules.auto_approve_threshold_usd if rules else 1_000_000
+        if price > threshold:
+            from src.engine.orchestrator import pause_deal_for_approval
+            await pause_deal_for_approval(
+                deal_id=deal_id,
+                demand_agent_id=self.agent_id,
+                demand_org=self.agent_config.get("organization", "Unknown"),
+                price=price,
+                threshold=threshold,
+                reasoning=reasoning,
+                pending_action={
+                    "kind": "submit_proposal",
+                    "opp_id": opp_id,
+                    "api_key": self.api_key,
+                    "price": price,
+                    "reasoning": reasoning,
+                    "scores": scores,
+                },
+            )
+            return
+
         logger.info("Managed agent %s: bidding $%s on %s", self.agent_id, price, opp_id)
 
         try:

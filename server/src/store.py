@@ -52,6 +52,10 @@ class ExchangeStore:
         self.athletes: dict[str, AthleteProfile] = {}     # athlete_id -> profile
         self.delegations: dict[str, DelegationGrant] = {} # grant_id -> grant
 
+        # Human-in-the-loop approval queue (deals paused above auto-approve threshold)
+        # Keyed by deal_id; value is the stashed action to resume on approve.
+        self.pending_approvals: dict[str, dict] = {}
+
     # ── Organization methods ──
 
     def register_org(

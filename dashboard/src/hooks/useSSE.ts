@@ -39,6 +39,9 @@ export function useSSE(endpoint: string) {
       "content_generated",
       "content_review",
       "agent_passed",
+      "human_approval_needed",
+      "human_approved",
+      "delegation_rejected",
     ];
 
     eventTypes.forEach((type) => {

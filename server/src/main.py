@@ -1,5 +1,6 @@
 import asyncio
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -7,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
-from src.api import agents, brands, content, deals, opportunities, orgs, proposals, stream
+from src.api import agents, athletes, brands, content, deals, opportunities, orgs, proposals, stream
 from src.conflict import init_conflict_engine
 
 
@@ -38,6 +39,30 @@ async def lifespan(app: FastAPI):
     # 3. Load athletes from seed file (always re-seeded — read-only roster)
     store.athletes = load_athletes_seed()
     print(f"  Seeded {len(store.athletes)} athletes")
+
+    # 3b. If no delegations exist yet, seed permissive ones from Pixology to
+    #     each athlete (30-day, all sports). The demo can still show
+    #     enforcement by revoking from the dashboard.
+    if not store.delegations:
+        from src.persistence import save_state as _save
+        from src.schemas.delegations import DelegationGrant as _DG
+        import uuid as _uuid
+        from datetime import timedelta as _td
+        now = datetime.now(UTC)
+        pixology_id = "agt_pixology_supply"
+        for athlete_id in store.athletes:
+            grant = _DG(
+                grant_id=f"del_{_uuid.uuid4().hex[:10]}",
+                athlete_id=athlete_id,
+                grantee_agent_id=pixology_id,
+                sports=["*"],
+                moment_types=["*"],
+                valid_from=now,
+                valid_until=now + _td(days=30),
+            )
+            store.delegations[grant.grant_id] = grant
+        _save(store)
+        print(f"  Seeded {len(store.delegations)} initial delegations (Pixology → all athletes, 30-day)")
 
     # 4. Seed orgs with fixed keys. One org per persona's organization.
     org_names = {seed["organization"] for seed in agent_seeds}
@@ -127,6 +152,10 @@ app.include_router(content.router, prefix="/api/v1/content", tags=["content"])
 
 # Brand rules editing
 app.include_router(brands.router, prefix="/api/v1/brands", tags=["brands"])
+
+# Athletes + delegations (NIL provenance)
+app.include_router(athletes.router, prefix="/api/v1/athletes", tags=["athletes"])
+app.include_router(athletes.router_delegations, prefix="/api/v1/delegations", tags=["delegations"])
 
 # Dashboard-facing API (SSE)
 app.include_router(stream.router, prefix="/api/v1/stream", tags=["stream"])

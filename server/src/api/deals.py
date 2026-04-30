@@ -1,10 +1,16 @@
 """Deal status and audit trail API routes."""
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
+from src.engine.orchestrator import reject_paused_deal, resume_approved_deal
 from src.store import store
 
 router = APIRouter()
+
+
+class RejectDealRequest(BaseModel):
+    reason: str | None = None
 
 
 @router.get("/stats")
@@ -75,3 +81,36 @@ async def get_deal_trace(deal_id: str):
         "agreement": store.deal_results.get(deal_id),
         "opportunity": opportunity_data,
     }
+
+
+@router.post("/{deal_id}/approve")
+async def approve_deal(deal_id: str):
+    """Human approves a deal paused in AWAITING_HUMAN_APPROVAL.
+
+    Resumes the deferred action (typically a proposal submission) and
+    lets the deal continue through the normal flow.
+    """
+    if deal_id not in store.deals:
+        raise HTTPException(status_code=404, detail="Deal not found")
+    result = await resume_approved_deal(deal_id)
+    if result is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Deal is not in AWAITING_HUMAN_APPROVAL state",
+        )
+    return result
+
+
+@router.post("/{deal_id}/reject")
+async def reject_deal(deal_id: str, req: RejectDealRequest | None = None):
+    """Human rejects a paused deal — deal moves to DEAL_REJECTED."""
+    if deal_id not in store.deals:
+        raise HTTPException(status_code=404, detail="Deal not found")
+    reason = req.reason if req else None
+    result = await reject_paused_deal(deal_id, reason)
+    if result is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Deal is not in AWAITING_HUMAN_APPROVAL state",
+        )
+    return result

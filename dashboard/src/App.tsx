@@ -5,6 +5,7 @@ import Onboarding from './pages/Onboarding';
 import DealDetail from './pages/DealDetail';
 import SignalOpportunity from './pages/SignalOpportunity';
 import BrandsList, { BrandEdit } from './pages/Brands';
+import AthletesList, { AthleteDetailPage } from './pages/Athletes';
 import './App.css';
 
 function App() {
@@ -62,6 +63,13 @@ function App() {
               </svg>
               Brands
             </NavLink>
+            <NavLink to="/athletes" className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="8" r="4" />
+                <path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" />
+              </svg>
+              Athletes
+            </NavLink>
           </div>
         </nav>
 
@@ -82,6 +90,8 @@ function App() {
           <Route path="/signal" element={<SignalOpportunity />} />
           <Route path="/brands" element={<BrandsList />} />
           <Route path="/brands/:agentId" element={<BrandEdit />} />
+          <Route path="/athletes" element={<AthletesList />} />
+          <Route path="/athletes/:athleteId" element={<AthleteDetailPage />} />
         </Routes>
       </main>
     </BrowserRouter>
