@@ -37,6 +37,7 @@ class RevokeDelegationRequest(BaseModel):
     reason: str | None = None
 
 
+@router.get("")
 @router.get("/")
 async def list_athletes() -> list[AthleteProfile]:
     return store.list_athletes()

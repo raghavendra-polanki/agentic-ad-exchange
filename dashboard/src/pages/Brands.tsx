@@ -21,10 +21,16 @@ export default function BrandsList() {
   const [brands, setBrands] = useState<BrandRules[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const [error, setError] = useState('');
   useEffect(() => {
     fetch(`${API_BASE}/api/v1/brands`)
-      .then(r => r.json())
-      .then((data: BrandRules[]) => setBrands(data))
+      .then(async r => {
+        const data = await r.json();
+        if (!r.ok) throw new Error((data as { detail?: string }).detail || `HTTP ${r.status}`);
+        if (!Array.isArray(data)) throw new Error(`Expected array, got: ${JSON.stringify(data).slice(0, 200)}`);
+        setBrands(data as BrandRules[]);
+      })
+      .catch(e => setError(e instanceof Error ? e.message : 'Load failed'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -36,6 +42,7 @@ export default function BrandsList() {
         <h1>Brands</h1>
         <p>Editable brand personas for managed demand agents. Edits take effect on the next bid.</p>
       </div>
+      {error && <div className="card" style={{borderColor:'var(--red)',color:'var(--red)'}}>Failed to load brands: {error}</div>}
 
       <div className="brand-grid">
         {brands.map(b => (

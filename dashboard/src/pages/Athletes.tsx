@@ -53,10 +53,16 @@ export default function AthletesList() {
   const [athletes, setAthletes] = useState<Athlete[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const [error, setError] = useState('');
   useEffect(() => {
     fetch(`${API_BASE}/api/v1/athletes`)
-      .then(r => r.json())
-      .then(setAthletes)
+      .then(async r => {
+        const data = await r.json();
+        if (!r.ok) throw new Error((data as { detail?: string }).detail || `HTTP ${r.status}`);
+        if (!Array.isArray(data)) throw new Error(`Expected array, got: ${JSON.stringify(data).slice(0, 200)}`);
+        setAthletes(data);
+      })
+      .catch(e => setError(e instanceof Error ? e.message : 'Load failed'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -68,6 +74,7 @@ export default function AthletesList() {
         <h1>Athletes</h1>
         <p>Pre-seeded roster. Grant or revoke delegation rights to supply agents from each athlete's profile.</p>
       </div>
+      {error && <div className="card" style={{borderColor:'var(--red)',color:'var(--red)'}}>Failed to load athletes: {error}</div>}
 
       <div className="brand-grid">
         {athletes.map(a => (
@@ -119,12 +126,12 @@ export function AthleteDetailPage() {
     ])
       .then(([d, a]) => {
         setDetail(d);
-        setAgents((a as AgentSummary[]).filter(x => x.agent_type === 'supply'));
-        if ((a as AgentSummary[]).length > 0) {
-          const supply = (a as AgentSummary[]).find(x => x.agent_type === 'supply');
-          if (supply) setGranteeId(supply.agent_id);
-        }
+        const aArr: AgentSummary[] = Array.isArray(a) ? a : [];
+        const supplyAgents = aArr.filter(x => x.agent_type === 'supply');
+        setAgents(supplyAgents);
+        if (supplyAgents.length > 0) setGranteeId(supplyAgents[0].agent_id);
       })
+      .catch(e => setError(e instanceof Error ? e.message : 'Load failed'))
       .finally(() => setLoading(false));
   }, [athleteId]);
 

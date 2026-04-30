@@ -34,6 +34,7 @@ class BrandRulesPatch(BaseModel):
     voice_md: str | None = None
 
 
+@router.get("")
 @router.get("/")
 async def list_brand_rules() -> list[BrandRules]:
     return store.list_brand_rules()
