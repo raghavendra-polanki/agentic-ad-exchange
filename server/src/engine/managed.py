@@ -49,34 +49,54 @@ def _parse_json_response(text: str) -> dict | None:
 class ManagedAgentRunner:
     """Runs an agent in-process. Processes notifications from the store queue."""
 
-    def __init__(self, org_id: str, agent_config: dict):
+    def __init__(
+        self,
+        org_id: str,
+        agent_config: dict,
+        agent_id: str | None = None,
+    ):
         self.org_id = org_id
         self.agent_config = agent_config
-        self.agent_id: str | None = None
+        self.agent_id: str | None = agent_id  # stable id (from persona filename) or None to generate
         self.api_key: str | None = None
         self.running = False
         self._task: asyncio.Task | None = None
-        self.system_prompt = self._build_persona(agent_config)
+        # system_prompt is built in start() after register, when we know
+        # the final agent_id and have BrandRules/ContentRules in the store.
+        self.system_prompt: str = ""
 
-    def _build_persona(self, config: dict) -> str:
-        """Build a rich Gemini system prompt from agent configuration."""
-        agent_type = config.get("agent_type", "demand")
-        name = config.get("name", "Agent")
-        org = config.get("organization", "Unknown")
-        desc = config.get("description", "")
+    def _build_demand_prompt(self) -> str:
+        """Build a Gemini system prompt for a demand agent from BrandRules.
 
-        if agent_type == "demand":
-            bp = config.get("brand_profile", {})
+        Re-reading from the store on every call is the Phase B move; for now
+        this is invoked once at start. Falls back to agent_config when no
+        BrandRules row exists (e.g. agents created via API without a persona).
+        """
+        rules = store.get_brand_rules(self.agent_id) if self.agent_id else None
+        if rules:
+            name = rules.agent_name
+            org = rules.brand
+            budget = rules.budget_per_deal_max
+            competitors = ", ".join(rules.competitor_exclusions) or "(none listed)"
+            voice = rules.voice_md
+        else:
+            cfg = self.agent_config
+            bp = cfg.get("brand_profile", {})
+            name = cfg.get("name", "Agent")
+            org = cfg.get("organization", "Unknown")
             budget = bp.get("budget_per_deal_max", 5000)
-            competitors = ", ".join(bp.get("competitor_exclusions", []))
-            return f"""You are {name}, an autonomous AI sponsorship agent for {org}.
+            competitors = ", ".join(bp.get("competitor_exclusions", [])) or "(none listed)"
+            voice = cfg.get("description", "")
+
+        return f"""You are {name}, an autonomous AI sponsorship agent for {org}.
 
 ## Your Identity
-- Brand: {org} — "{bp.get('tagline', '')}"
-- Tone: {bp.get('tone', 'professional')}
+- Brand: {org}
 - Budget: up to ${budget} per deal
 - Competitors to NEVER sponsor alongside: {competitors}
-- Description: {desc}
+
+## Voice & Brand Guidance
+{voice}
 
 ## Your Evaluation Framework
 When evaluating a content opportunity, think through each step:
@@ -98,13 +118,30 @@ Respond with ONLY a JSON object:
 
 If passing: {{"should_bid": false, "reasoning": "why this doesn't fit"}}"""
 
-            return f"""You are {name}, an autonomous AI content creation agent for {org}.
+    def _build_supply_prompt(self) -> str:
+        """Build a Gemini system prompt for a supply agent from ContentRules."""
+        rules = store.get_content_rules(self.agent_id) if self.agent_id else None
+        if rules:
+            name = rules.agent_name
+            org = self.agent_config.get("organization", "Pixology")
+            min_price = rules.min_price_per_deal
+            voice = rules.voice_md
+        else:
+            cfg = self.agent_config
+            name = cfg.get("name", "Content Agent")
+            org = cfg.get("organization", "Pixology")
+            min_price = 100
+            voice = cfg.get("description", "")
+
+        return f"""You are {name}, an autonomous AI content creation agent for {org}.
 
 ## Your Identity
 - Service: Premium content creation for college athletes
 - Quality: Broadcast-grade, NCAA-compliant
-- Floor: whatever min_price was listed on the opportunity
-- Description: {desc}
+- Default minimum price floor: ${min_price} (the listed opportunity min_price overrides)
+
+## Voice & Service Guidance
+{voice}
 
 ## Your Evaluation Framework
 When evaluating a brand proposal, think through:
@@ -140,9 +177,15 @@ For reject: {{"decision": "reject", "reasoning": "why rejecting", "counter_price
             bp = self.agent_config.get("brand_profile", {})
             req.brand_profile = BrandProfile(**bp) if bp else None
 
-        creds = store.register_agent(req, org_id=self.org_id)
+        creds = store.register_agent(req, org_id=self.org_id, agent_id=self.agent_id)
         self.agent_id = creds.agent_id
         self.api_key = creds.api_key
+
+        # Build system_prompt now that agent_id is stable and store may have rules
+        if req.agent_type == AgentType.DEMAND:
+            self.system_prompt = self._build_demand_prompt()
+        else:
+            self.system_prompt = self._build_supply_prompt()
         self.running = True
         _runners[self.agent_id] = self
 
@@ -177,9 +220,21 @@ For reject: {{"decision": "reject", "reasoning": "why rejecting", "counter_price
                 await asyncio.sleep(1)
 
     async def _call_gemini(self, user_message: str, deal_id: str = "") -> dict | None:
-        """Call Gemini with streaming thoughts published to SSE."""
+        """Call Gemini with streaming thoughts published to SSE.
+
+        Rebuilds system_prompt from current store state on every call so
+        brand-rules edits made via the dashboard take effect immediately,
+        without a server restart.
+        """
         if not gemini.available:
             return None
+
+        # Re-read persona from store (BrandRules / ContentRules may have been edited)
+        agent_type = self.agent_config.get("agent_type", "demand")
+        if agent_type == "demand":
+            self.system_prompt = self._build_demand_prompt()
+        else:
+            self.system_prompt = self._build_supply_prompt()
 
         full_prompt = f"{self.system_prompt}\n\n---\n\n{user_message}"
 

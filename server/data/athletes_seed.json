@@ -1,0 +1,31 @@
+[
+  {
+    "athlete_id": "ath_cooper_reed",
+    "name": "Cooper Reed",
+    "school": "Duke",
+    "sport": "basketball",
+    "social_handles": {
+      "instagram": "@coopreed",
+      "twitter": "@coopreed_2"
+    }
+  },
+  {
+    "athlete_id": "ath_marcus_johnson",
+    "name": "Marcus Johnson",
+    "school": "Ohio State",
+    "sport": "football",
+    "social_handles": {
+      "instagram": "@mjohnson_16",
+      "twitter": "@mj_buckeye"
+    }
+  },
+  {
+    "athlete_id": "ath_mit_engineers",
+    "name": "MIT Engineers",
+    "school": "MIT",
+    "sport": "hockey",
+    "social_handles": {
+      "instagram": "@mitengineers"
+    }
+  }
+]

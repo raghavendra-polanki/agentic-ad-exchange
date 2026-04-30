@@ -12,8 +12,10 @@ from src.schemas.agents import (
     SupplyAgentProfile,
 )
 from src.schemas.deals import DealSummary
+from src.schemas.delegations import AthleteProfile, DelegationGrant
 from src.schemas.opportunities import OpportunityRecord
 from src.schemas.orgs import OrgCredentials, OrgProfile, RegisterOrgRequest
+from src.schemas.personas import BrandRules, ContentRules
 from src.schemas.proposals import ProposalRecord
 
 
@@ -41,6 +43,14 @@ class ExchangeStore:
         self.deals: dict[str, DealSummary] = {}
         self.deal_events: dict[str, list[dict]] = {}  # deal_id -> events
         self.deal_results: dict[str, dict] = {}  # deal_id -> full engine result
+
+        # Editable persona configs (persisted in state.json)
+        self.brand_rules: dict[str, BrandRules] = {}      # agent_id -> rules
+        self.content_rules: dict[str, ContentRules] = {}  # agent_id -> rules
+
+        # NIL provenance
+        self.athletes: dict[str, AthleteProfile] = {}     # athlete_id -> profile
+        self.delegations: dict[str, DelegationGrant] = {} # grant_id -> grant
 
     # ── Organization methods ──
 
@@ -97,9 +107,15 @@ class ExchangeStore:
     # ── Agent methods ──
 
     def register_agent(
-        self, req: RegisterAgentRequest, org_id: str | None = None,
+        self,
+        req: RegisterAgentRequest,
+        org_id: str | None = None,
+        agent_id: str | None = None,
     ) -> AgentCredentials:
-        agent_id = f"agt_{uuid.uuid4().hex[:12]}"
+        """Register a new agent. If agent_id is provided (e.g. from a persona
+        file), use it as the stable identifier; otherwise generate one."""
+        if agent_id is None:
+            agent_id = f"agt_{uuid.uuid4().hex[:12]}"
         api_key = f"aax_sk_{secrets.token_urlsafe(32)}"
         webhook_secret = f"whsec_{secrets.token_urlsafe(24)}"
 
@@ -232,6 +248,49 @@ class ExchangeStore:
         if deal_id not in self.deal_events:
             self.deal_events[deal_id] = []
         self.deal_events[deal_id].append(event)
+
+    # ── Persona / brand-rules accessors ──
+
+    def get_brand_rules(self, agent_id: str) -> BrandRules | None:
+        return self.brand_rules.get(agent_id)
+
+    def get_content_rules(self, agent_id: str) -> ContentRules | None:
+        return self.content_rules.get(agent_id)
+
+    def list_brand_rules(self) -> list[BrandRules]:
+        return list(self.brand_rules.values())
+
+    # ── Athlete + delegation accessors ──
+
+    def get_athlete(self, athlete_id: str) -> AthleteProfile | None:
+        return self.athletes.get(athlete_id)
+
+    def list_athletes(self) -> list[AthleteProfile]:
+        return list(self.athletes.values())
+
+    def find_athlete(self, name: str | None = None, school: str | None = None) -> AthleteProfile | None:
+        """Best-effort match by name (and optionally school)."""
+        for ath in self.athletes.values():
+            if name and ath.name.lower() == name.lower():
+                if school is None or ath.school.lower() == school.lower():
+                    return ath
+        return None
+
+    def list_delegations_for_athlete(self, athlete_id: str) -> list[DelegationGrant]:
+        return [g for g in self.delegations.values() if g.athlete_id == athlete_id]
+
+    def find_active_delegation(
+        self, athlete_id: str, grantee_agent_id: str,
+    ) -> DelegationGrant | None:
+        """Return the first non-revoked, in-window grant for (athlete, grantee)."""
+        for g in self.delegations.values():
+            if g.athlete_id != athlete_id:
+                continue
+            if g.grantee_agent_id != grantee_agent_id:
+                continue
+            if g.covers():  # default args ignore sport/moment_type
+                return g
+        return None
 
 
 # Singleton

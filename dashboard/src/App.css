@@ -2185,3 +2185,63 @@
   font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 4px;
   background: rgba(0,0,0,0.7); color: #fff; text-transform: capitalize;
 }
+
+/* ── Brands page ─────────────────────────────────────────────── */
+.brand-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+.brand-card {
+  display: block;
+  padding: 20px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  text-decoration: none;
+  color: var(--text-primary);
+  transition: border-color 0.15s, transform 0.15s;
+}
+.brand-card:hover {
+  border-color: var(--orange);
+  transform: translateY(-2px);
+}
+.brand-card__header {
+  display: flex; justify-content: space-between; align-items: baseline;
+  margin-bottom: 4px;
+}
+.brand-card__header h3 { margin: 0; font-size: 18px; font-weight: 600; }
+.brand-card__version {
+  font-size: 11px; color: var(--text-muted); font-family: ui-monospace, monospace;
+}
+.brand-card__name {
+  color: var(--text-secondary); font-size: 13px; margin-bottom: 16px;
+}
+.brand-card__metrics {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px;
+}
+.brand-card__metric {
+  display: flex; flex-direction: column; gap: 2px;
+}
+.brand-card__metric-label {
+  font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;
+}
+.brand-card__metric-value {
+  font-size: 14px; font-weight: 600; color: var(--text-primary);
+}
+.brand-card__chips {
+  display: flex; flex-wrap: wrap; gap: 6px; padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,0.05);
+}
+.brand-card__chip {
+  font-size: 11px; padding: 3px 8px; border-radius: 4px;
+  background: rgba(239, 68, 68, 0.1); color: #f87171;
+}
+
+/* form-grid helpers (used by BrandEdit) */
+.form-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+}
+.form-grid--3col { grid-template-columns: 1fr 1fr 1fr; }
+.form-hint { color: var(--text-muted); font-weight: 400; font-size: 11px; }

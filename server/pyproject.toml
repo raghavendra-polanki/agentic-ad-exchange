@@ -25,6 +25,7 @@ dependencies = [
     "pillow>=11.0",
     "aiofiles>=24.1",
     "python-multipart>=0.0.18",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]

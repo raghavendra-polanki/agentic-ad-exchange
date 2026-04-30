@@ -46,3 +46,8 @@ coverage.xml
 # Runtime artifacts (Gemini-generated images, uploaded opportunity images)
 server/static/generated/
 server/static/opportunities/
+
+# Persisted runtime state (brand rules edits, delegations) — survives via state.json
+# but not version-controlled. Athletes seed file IS committed.
+server/data/state.json
+server/data/state.json.tmp
