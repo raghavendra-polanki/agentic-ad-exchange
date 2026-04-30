@@ -85,6 +85,64 @@ async def signal_from_dashboard(body: dict):
     return await handle_signal_opportunity(agent, signal)
 
 
+@router.post("/analyze-image")
+async def analyze_uploaded_image(image: UploadFile = File(...)):
+    """Run Gemini Vision on an uploaded moment image and return structured
+    form-fill suggestions. Used by the Signal Opportunity page to populate
+    athlete / school / sport / description / pricing fields automatically.
+
+    Best-effort — if Gemini is unavailable or returns garbage, returns 200
+    with empty fields so the dashboard can fall back gracefully.
+    """
+    from src.gemini.adaptor import gemini
+
+    image_bytes = await image.read()
+    mime = image.content_type or "image/jpeg"
+
+    if not gemini.available:
+        return {"ok": False, "reason": "gemini_unavailable", "suggestion": {}}
+
+    prompt = """You are analyzing a sports content image to suggest metadata for an
+ad-exchange listing. Be ACCURATE to what's in the image — do not invent details
+that aren't visible. If unsure, say so by leaving the field empty.
+
+Return ONLY a single JSON object (no markdown fences, no prose) with these keys:
+{
+  "athlete_name": "<best guess for the athlete shown, or '' if unknown>",
+  "school": "<team or school name visible on jersey/helmet, or '' if unclear>",
+  "sport": "<one of: basketball, football, soccer, baseball, track, swimming, hockey, other>",
+  "moment_description": "<2-3 sentence vivid description of what's happening, what makes the moment notable, equipment/brand visibility, mood, lighting>",
+  "audience_reach": <integer, conservative estimate of how many people would see this clip — 50000 for routine plays, 500000 for highlights, 1500000+ for top SportsCenter plays>,
+  "trending_score": <number 0-10, how likely this is to go viral>,
+  "min_price": <integer USD, suggested floor price for branded content tied to this moment — 100 for hyperlocal, 1000 for mid-tier college, 5000+ for premium>,
+  "content_formats": <array, subset of ["gameday_graphic","social_post","highlight_reel","story","video_clip"]>,
+  "confidence": "<low|medium|high — how confident you are in the suggestions>"
+}
+
+If you can identify the league (NFL, NBA, college, etc.), include that signal in
+moment_description. Do not output anything outside the JSON object."""
+
+    try:
+        text = await gemini.analyze(image_bytes, prompt, mime_type=mime)
+    except Exception as e:
+        return {"ok": False, "reason": str(e), "suggestion": {}}
+
+    # Strip markdown fences if Gemini ignored the instruction
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
+        if "```" in cleaned:
+            cleaned = cleaned[: cleaned.rindex("```")]
+        cleaned = cleaned.strip()
+
+    try:
+        suggestion = json.loads(cleaned[cleaned.index("{"): cleaned.rindex("}") + 1])
+    except (ValueError, json.JSONDecodeError) as e:
+        return {"ok": False, "reason": f"parse_failed: {e}", "raw": text[:500], "suggestion": {}}
+
+    return {"ok": True, "suggestion": suggestion}
+
+
 @router.post("/signal-with-image")
 async def signal_with_image_from_dashboard(
     image: UploadFile = File(...),

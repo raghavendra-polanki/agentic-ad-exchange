@@ -87,6 +87,8 @@ export default function SignalOpportunity() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState('');
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeNote, setAnalyzeNote] = useState('');
 
   // Fetch supply agents
   useEffect(() => {
@@ -135,6 +137,49 @@ export default function SignalOpportunity() {
     if (source.kind === 'upload') URL.revokeObjectURL(source.previewUrl);
     setSource({ kind: 'upload', file, previewUrl: URL.createObjectURL(file) });
     setError('');
+    void analyzeAndAutofill(file);
+  }
+
+  async function analyzeAndAutofill(file: File) {
+    setAnalyzing(true);
+    setAnalyzeNote('');
+    try {
+      const form = new FormData();
+      form.append('image', file);
+      const res = await fetch(`${API_BASE}/api/v1/opportunities/analyze-image`, {
+        method: 'POST',
+        body: form,
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (!data.ok) {
+        setAnalyzeNote(`Auto-fill skipped: ${data.reason || 'unknown'}`);
+        return;
+      }
+      const s = data.suggestion ?? {};
+      // Only fill empty fields so we don't clobber user edits
+      if (s.athlete_name && !athleteName) setAthleteName(String(s.athlete_name));
+      if (s.school && !school) setSchool(String(s.school));
+      if (s.sport && ['basketball','football','soccer','baseball','track','swimming','hockey','other'].includes(s.sport)) {
+        setSport(s.sport);
+      }
+      if (s.moment_description && !momentDesc) setMomentDesc(String(s.moment_description));
+      if (typeof s.audience_reach === 'number' && !reach) setReach(String(Math.round(s.audience_reach)));
+      if (typeof s.trending_score === 'number' && !trendingScore) setTrendingScore(String(s.trending_score));
+      if (typeof s.min_price === 'number' && !minPrice) setMinPrice(String(Math.round(s.min_price)));
+      if (Array.isArray(s.content_formats) && s.content_formats.length > 0) {
+        const valid = s.content_formats.filter((f: string) =>
+          ['gameday_graphic','social_post','highlight_reel','story','video_clip'].includes(f)
+        );
+        if (valid.length > 0) setFormats(valid);
+      }
+      const conf = s.confidence ? ` (confidence: ${s.confidence})` : '';
+      setAnalyzeNote(`Auto-filled from image${conf}. Review and edit before signaling.`);
+    } catch (e) {
+      setAnalyzeNote(`Auto-fill failed: ${e instanceof Error ? e.message : 'unknown'}. Fill the form manually.`);
+    } finally {
+      setAnalyzing(false);
+    }
   }
 
   function toggleFormat(fmt: string) {
@@ -332,21 +377,32 @@ export default function SignalOpportunity() {
                   </div>
                 </div>
               ) : (
-                <div className="upload-preview">
-                  <img src={sourcePreviewUrl ?? ''} alt="moment" />
-                  <div className="upload-preview__meta">
-                    <div className="upload-preview__title">
-                      {source.kind === 'upload' ? source.file.name : IMAGE_PRESETS[source.presetId].label}
+                <>
+                  <div className="upload-preview">
+                    <img src={sourcePreviewUrl ?? ''} alt="moment" />
+                    <div className="upload-preview__meta">
+                      <div className="upload-preview__title">
+                        {source.kind === 'upload' ? source.file.name : IMAGE_PRESETS[source.presetId].label}
+                      </div>
+                      <div className="upload-preview__sub">
+                        {source.kind === 'upload' ? `${Math.round(source.file.size / 1024)} KB · custom upload` : 'demo preset'}
+                      </div>
+                      {analyzing && (
+                        <div className="upload-preview__analyzing">
+                          <span className="upload-preview__spinner" />
+                          Analyzing image with Gemini Vision…
+                        </div>
+                      )}
+                      {!analyzing && analyzeNote && (
+                        <div className="upload-preview__note">{analyzeNote}</div>
+                      )}
                     </div>
-                    <div className="upload-preview__sub">
-                      {source.kind === 'upload' ? `${Math.round(source.file.size / 1024)} KB · custom upload` : 'demo preset'}
+                    <div className="upload-preview__actions">
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={() => fileInputRef.current?.click()}>Replace</button>
+                      <button type="button" className="btn btn-secondary btn-sm" onClick={clearImage}>Clear</button>
                     </div>
                   </div>
-                  <div className="upload-preview__actions">
-                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => fileInputRef.current?.click()}>Replace</button>
-                    <button type="button" className="btn btn-secondary btn-sm" onClick={clearImage}>Clear</button>
-                  </div>
-                </div>
+                </>
               )}
               <input
                 ref={fileInputRef}
