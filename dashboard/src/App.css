@@ -2295,3 +2295,70 @@
   font-size: 13px; font-style: italic; color: var(--text-secondary);
 }
 .approval-banner__actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+/* ── Signal Opportunity — upload dropzone + preset menu ──────── */
+.upload-dropzone {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px;
+  padding: 36px 20px;
+  border: 2px dashed rgba(255,255,255,0.12);
+  border-radius: 12px;
+  background: rgba(255,255,255,0.015);
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: border-color 0.15s, background 0.15s;
+}
+.upload-dropzone:hover {
+  border-color: var(--orange); background: rgba(249,115,22,0.04); color: var(--text-primary);
+}
+.upload-dropzone svg { color: var(--text-muted); }
+.upload-dropzone__title { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.upload-dropzone__hint { font-size: 12px; color: var(--text-muted); }
+.upload-dropzone__alt { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+.link-button {
+  background: none; border: none; padding: 0; cursor: pointer;
+  color: var(--orange); font: inherit; text-decoration: underline;
+}
+
+.upload-preview {
+  display: flex; align-items: center; gap: 16px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-surface);
+}
+.upload-preview img {
+  width: 160px; aspect-ratio: 16/9;
+  object-fit: cover;
+  border-radius: 8px;
+  background: #000;
+}
+.upload-preview__meta { flex: 1; min-width: 0; }
+.upload-preview__title {
+  font-size: 14px; font-weight: 600; color: var(--text-primary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.upload-preview__sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.upload-preview__actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+.preset-menu {
+  position: absolute; right: 0; top: calc(100% + 6px);
+  width: 320px; padding: 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  z-index: 50;
+}
+.preset-menu__item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 8px;
+  background: transparent; border: none; border-radius: 6px;
+  cursor: pointer; text-align: left;
+  color: var(--text-primary);
+}
+.preset-menu__item:hover { background: rgba(255,255,255,0.04); }
+.preset-menu__item img {
+  width: 64px; aspect-ratio: 16/9; object-fit: cover; border-radius: 4px;
+}
+.preset-menu__item span { font-size: 13px; }

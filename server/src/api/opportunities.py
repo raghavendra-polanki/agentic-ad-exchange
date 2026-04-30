@@ -85,6 +85,45 @@ async def signal_from_dashboard(body: dict):
     return await handle_signal_opportunity(agent, signal)
 
 
+@router.post("/signal-with-image")
+async def signal_with_image_from_dashboard(
+    image: UploadFile = File(...),
+    signal_json: str = Form(...),
+    agent_id: str = Form(...),
+):
+    """Dashboard variant of /with-image — accepts agent_id as a form
+    field instead of requiring Bearer-token auth. Used by the
+    Signal Opportunity page when the user uploads a custom image.
+    """
+    agent = store.get_agent(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Supply agent not found")
+
+    try:
+        signal_data = json.loads(signal_json)
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid signal_json: {e}")
+
+    signal = OpportunitySignal(**signal_data)
+
+    # Save uploaded image
+    image_id = uuid.uuid4().hex[:12]
+    ext = "jpg"
+    if image.filename and "." in image.filename:
+        ext = image.filename.rsplit(".", 1)[-1].lower()
+    if ext not in {"jpg", "jpeg", "png", "webp"}:
+        raise HTTPException(status_code=400, detail=f"Unsupported image type: .{ext}")
+
+    save_path = _STATIC_DIR / "opportunities" / f"{image_id}.{ext}"
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    save_path.write_bytes(await image.read())
+
+    signal.image_id = image_id
+    signal.image_url = f"/static/opportunities/{image_id}.{ext}"
+
+    return await handle_signal_opportunity(agent, signal)
+
+
 @router.post("/{opportunity_id}/propose")
 async def submit_proposal(
     opportunity_id: str,
