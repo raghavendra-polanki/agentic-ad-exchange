@@ -29,7 +29,7 @@ logger = logging.getLogger("aax.orchestrator")
 _STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "static"
 
 # Default timeout for deals (seconds). 120s for demo pacing.
-DEFAULT_DEAL_TIMEOUT = 300  # 5 minutes — allows time for Gemini reasoning
+DEFAULT_DEAL_TIMEOUT = 1800  # 30 minutes — comfortable for live demos
 
 
 def _on_deal_expired(deal_id: str) -> None:
@@ -385,6 +385,8 @@ async def pause_deal_for_approval(
     """
     store.update_deal(deal_id, state=DealState.AWAITING_HUMAN_APPROVAL)
     store.pending_approvals[deal_id] = pending_action
+    # Pause the deal timer — humans take longer than agents
+    timeout_manager.cancel(deal_id)
     ts = datetime.now(UTC).isoformat()
 
     store.add_deal_event(deal_id, {
@@ -424,6 +426,12 @@ async def resume_approved_deal(deal_id: str) -> dict | None:
         return None
     if deal.state != DealState.AWAITING_HUMAN_APPROVAL:
         return None
+
+    # Restart the deal timer — back into the autonomous flow
+    try:
+        timeout_manager.register(deal_id, DEFAULT_DEAL_TIMEOUT, _on_deal_expired)
+    except RuntimeError:
+        pass
 
     ts = datetime.now(UTC).isoformat()
     store.add_deal_event(deal_id, {
@@ -476,6 +484,7 @@ async def reject_paused_deal(deal_id: str, reason: str | None = None) -> dict | 
     if deal.state != DealState.AWAITING_HUMAN_APPROVAL:
         return None
 
+    timeout_manager.cancel(deal_id)
     ts = datetime.now(UTC).isoformat()
     store.update_deal(deal_id, state=DealState.DEAL_REJECTED)
     store.add_deal_event(deal_id, {
