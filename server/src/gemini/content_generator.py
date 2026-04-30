@@ -136,6 +136,7 @@ class ContentGenerator:
                     # Save to local static directory
                     filename = f"gen_{uuid.uuid4().hex[:8]}_{variation}.png"
                     save_path = STATIC_DIR / "generated" / filename
+                    save_path.parent.mkdir(parents=True, exist_ok=True)
                     save_path.write_bytes(image_bytes)
 
                     options.append({

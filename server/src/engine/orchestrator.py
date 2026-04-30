@@ -952,6 +952,33 @@ async def _validate_generated_options(deal, options: list[dict]) -> None:
     valid_options = [o for o in options if o.get("image_url") and not o.get("placeholder")]
     if not valid_options:
         logger.warning("No valid options to validate for deal %s", deal.deal_id)
+        # Emit a synthetic content_validated event so the dashboard doesn't hang
+        # forever in "validator working" state. Mark deal failed.
+        await sse_bus.publish("content_validated", {
+            "deal_id": deal.deal_id,
+            "option_id": 0,
+            "style": "n/a",
+            "passed": False,
+            "score": 0.0,
+            "checks": {},
+            "issues": ["Content generation produced no usable images."],
+            "timestamp": datetime.now(UTC).isoformat(),
+        })
+        store.add_deal_event(deal.deal_id, {
+            "type": "content_validated",
+            "actor": "Validator",
+            "actor_type": "validator",
+            "passed": False,
+            "score": 0.0,
+            "issues": ["Content generation produced no usable images."],
+            "timestamp": datetime.now(UTC).isoformat(),
+        })
+        store.update_deal(deal.deal_id, state=DealState.DEAL_REJECTED)
+        await sse_bus.publish("deal_rejected", {
+            "deal_id": deal.deal_id,
+            "reason": "content_generation_failed",
+            "timestamp": datetime.now(UTC).isoformat(),
+        })
         return
 
     validation_results = []
